@@ -53,6 +53,7 @@ public final class ServiceFactory {
             throw new IllegalArgumentException("Port out of range");
         }
 
-        throw new IllegalStateException();
+        //throw new IllegalStateException();
+        return LevelService.create(port, dao);
     }
 }
