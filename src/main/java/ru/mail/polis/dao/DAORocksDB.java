@@ -1,7 +1,9 @@
 package ru.mail.polis.dao;
-import static org.iq80.leveldb.impl.Iq80DBFactory.factory;
+
 import org.jetbrains.annotations.NotNull;
-import org.iq80.leveldb.*;;
+
+import org.rocksdb.*;
+import org.rocksdb.util.BytewiseComparator;
 import ru.mail.polis.Record;
 
 import java.io.File;
@@ -10,24 +12,24 @@ import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
-public class DAOLevelDB implements DAO {
-    private DB mDb;
+public class DAORocksDB implements DAO {
+    private RocksDB mDb;
 
-    public DAOLevelDB(DB db) {
+    public DAORocksDB(RocksDB db) {
         this.mDb = db;
     }
 
     public static class LevelDBRecordIterator implements Iterator<Record>, AutoCloseable {
 
-        private DBIterator iterator;
+        private RocksIterator iterator;
 
-        LevelDBRecordIterator(@NotNull DBIterator iterator) {
+        LevelDBRecordIterator(@NotNull RocksIterator iterator) {
             this.iterator = iterator;
         }
 
         @Override
         public boolean hasNext() {
-            return iterator.hasNext();
+            return iterator.isValid();
         }
 
         @Override
@@ -35,8 +37,8 @@ public class DAOLevelDB implements DAO {
             if (!hasNext()) {
                 throw new IllegalStateException("Iterator is not viable!");
             }
-            final var keyByteArray = iterator.peekNext().getKey();
-            final var valueByteArray = iterator.peekNext().getValue();
+            final var keyByteArray = iterator.key();
+            final var valueByteArray = iterator.value();
             final var key = ByteBuffer.wrap(keyByteArray);
             final var value = ByteBuffer.wrap(valueByteArray);
             final var record = Record.of(key, value);
@@ -45,13 +47,8 @@ public class DAOLevelDB implements DAO {
         }
 
         @Override
-        public void close() throws IOException {
-            try {
-                iterator.close();
-            }
-            catch (IOException e) {
-                throw new IOException("Failed to close the iterator!", e);
-            }
+        public void close() {
+            iterator.close();
         }
     }
 
@@ -60,8 +57,8 @@ public class DAOLevelDB implements DAO {
     public Iterator<Record> iterator(@NotNull ByteBuffer from) {
         var fromByteArray = from.array();
 
-        ReadOptions readOptions = new ReadOptions().snapshot(mDb.getSnapshot());
-        DBIterator iterator = mDb.iterator(readOptions);
+        ReadOptions readOptions = new ReadOptions();
+        RocksIterator iterator = mDb.newIterator();
         iterator.seek(fromByteArray);
 
         return new LevelDBRecordIterator(iterator);
@@ -77,7 +74,7 @@ public class DAOLevelDB implements DAO {
                 throw new NoSuchElementException("Key is not present!");
             }
             return ByteBuffer.wrap(valueByteArray);
-        } catch (DBException e) {
+        } catch (RocksDBException e) {
             throw new DAOException("Get method exception!", e);
         }
     }
@@ -88,7 +85,7 @@ public class DAOLevelDB implements DAO {
         final var valueByteArray = value.array();
         try {
             mDb.put(keyByteArray, valueByteArray);
-        } catch (DBException e) {
+        } catch (RocksDBException  e) {
             throw new DAOException("Upsert method exception!", e);
         }
     }
@@ -98,7 +95,7 @@ public class DAOLevelDB implements DAO {
         final var keyByteArray = key.array();
         try {
             mDb.delete(keyByteArray);
-        } catch (DBException e) {
+        } catch (RocksDBException  e) {
             throw new DAOException("Remove method exception!", e);
         }
     }
@@ -106,31 +103,29 @@ public class DAOLevelDB implements DAO {
     @Override
     public void compact() throws IOException {
         try {
-            mDb.compactRange(null, null);
-        } catch (DBException e) {
+            mDb.compactRange();
+        } catch (RocksDBException  e) {
             throw new DAOException("Compact method exception!", e);
         }
     }
 
     @Override
-    public void close() throws IOException {
-        try {
-            mDb.close();
-        } catch (IOException e) {
-            throw new IOException("Failed to close the DB!", e);
-        }
+    public void close() {
+        mDb.close();
     }
 
     static DAO create(File data) throws IOException {
         try {
             var options = new Options();
-            options.createIfMissing(true);
-            options.verifyChecksums(true);
-            options.errorIfExists(false);
-            options.compressionType(CompressionType.NONE);
-            DB db = factory.open(data,options);
-            return new DAOLevelDB(db);
-        } catch (DBException e) {
+            options.setCreateIfMissing(true);
+            options.setErrorIfExists(false);
+            options.setCompressionType(CompressionType.NO_COMPRESSION);
+            var comparator = new BytewiseComparator(new ComparatorOptions());
+            //options.setComparator(BuiltinComparator.BYTEWISE_COMPARATOR);
+            options.setComparator(comparator);
+            RocksDB db = RocksDB.open(options, data.getAbsolutePath());
+            return new DAORocksDB(db);
+        } catch (RocksDBException e) {
             throw new DAOException("LevelDB instantiation failed!", e);
         }
     }

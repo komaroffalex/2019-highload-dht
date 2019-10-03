@@ -54,6 +54,6 @@ public final class ServiceFactory {
         }
 
         //throw new IllegalStateException();
-        return LevelService.create(port, dao);
+        return RocksDBHttpService.create(port, dao);
     }
 }

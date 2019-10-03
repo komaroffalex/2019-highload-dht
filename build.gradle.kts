@@ -32,8 +32,9 @@ dependencies {
     testRuntime("org.junit.jupiter:junit-jupiter-engine:5.4.0")
 
     // https://mvnrepository.com/artifact/org.iq80.leveldb/leveldb
-    compile("org.iq80.leveldb", "leveldb", "0.12")
+    //compile("org.iq80.leveldb", "leveldb", "0.12")
 
+    compile("org.rocksdb", "rocksdbjni", "6.2.2")
 }
 
 val run by tasks.getting(JavaExec::class) {
