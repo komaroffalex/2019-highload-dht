@@ -19,11 +19,11 @@ public class DAORocksDB implements DAO {
         this.mDb = db;
     }
 
-    public static class LevelDBRecordIterator implements Iterator<Record>, AutoCloseable {
+    public static class RocksDBRecordIterator implements Iterator<Record>, AutoCloseable {
 
         private RocksIterator iterator;
 
-        LevelDBRecordIterator(@NotNull RocksIterator iterator) {
+        RocksDBRecordIterator(@NotNull RocksIterator iterator) {
             this.iterator = iterator;
         }
 
@@ -61,7 +61,7 @@ public class DAORocksDB implements DAO {
         RocksIterator iterator = mDb.newIterator();
         iterator.seek(fromByteArray);
 
-        return new LevelDBRecordIterator(iterator);
+        return new RocksDBRecordIterator(iterator);
     }
 
     @NotNull

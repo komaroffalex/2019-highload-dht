@@ -13,11 +13,11 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.NoSuchElementException;
 
-public class RocksDBHttpService extends HttpServer implements Service {
+public class HttpService extends HttpServer implements Service {
 
     private DAO dao;
 
-    private RocksDBHttpService(final HttpServerConfig config, @NotNull final DAO dao) throws IOException {
+    private HttpService(final HttpServerConfig config, @NotNull final DAO dao) throws IOException {
         super(config);
         this.dao = dao;
     }
@@ -27,7 +27,7 @@ public class RocksDBHttpService extends HttpServer implements Service {
         var config = new HttpServerConfig();
         acceptor.port = port;
         config.acceptors = new AcceptorConfig[]{acceptor};
-        return new RocksDBHttpService(config, dao);
+        return new HttpService(config, dao);
     }
 
     @Override
