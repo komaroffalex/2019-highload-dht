@@ -23,7 +23,7 @@ import java.util.Iterator;
 public final class DAORocksDB implements DAO {
     private final RocksDB mdb;
 
-    private static volatile boolean open = false;
+    private static volatile boolean open;
     private static WriteOptions wOptions;
     private final Object objLock = new Object();
 
@@ -50,7 +50,7 @@ public final class DAORocksDB implements DAO {
                 throw new IllegalStateException("Iterator is not viable!");
             }
             final var keyByteArray = iterator.key();
-            ByteBuffer unpackedKey = compressKey(keyByteArray);
+            final ByteBuffer unpackedKey = compressKey(keyByteArray);
             final var valueByteArray = iterator.value();
             final var value = ByteBuffer.wrap(valueByteArray);
             final var record = Record.of(unpackedKey, value);
@@ -68,7 +68,7 @@ public final class DAORocksDB implements DAO {
     @Override
     public Iterator<Record> iterator(@NotNull final ByteBuffer from) {
         final RocksIterator iterator = mdb.newIterator();
-        byte[] packedKey = decompressKey(from);
+        final byte[] packedKey = decompressKey(from);
         iterator.seek(packedKey);
         return new RocksDBRecordIterator(iterator);
     }
@@ -78,8 +78,8 @@ public final class DAORocksDB implements DAO {
     public ByteBuffer get(@NotNull final ByteBuffer keys) throws IOException, NoSuchElementException {
         synchronized (objLock) {
             try {
-                byte[] packedKey = decompressKey(keys);
-                byte[] valueByteArray = mdb.get(packedKey);
+                final byte[] packedKey = decompressKey(keys);
+                final byte[] valueByteArray = mdb.get(packedKey);
                 if (valueByteArray == null) {
                     throw new NoSuchElementException("Key is not present!");
                 }
@@ -94,7 +94,7 @@ public final class DAORocksDB implements DAO {
     public void upsert(@NotNull final ByteBuffer keys, @NotNull final ByteBuffer values) throws IOException {
         synchronized (objLock) {
             try {
-                byte[] packedKey = decompressKey(keys);
+                final byte[] packedKey = decompressKey(keys);
                 final byte[] arrayValue = copyAndExtractFromByteBuffer(values);
                 mdb.put(wOptions,packedKey, arrayValue);
             } catch (RocksDBException e) {
@@ -106,7 +106,7 @@ public final class DAORocksDB implements DAO {
     @Override
     public void remove(@NotNull final ByteBuffer key) throws IOException {
         try {
-            byte[] packedKey = decompressKey(key);
+            final byte[] packedKey = decompressKey(key);
             mdb.delete(wOptions,packedKey);
         } catch (RocksDBException  e) {
             throw new DAOException("Remove method exception!", e);
@@ -127,7 +127,7 @@ public final class DAORocksDB implements DAO {
     }
 
     @Override
-    public synchronized void close() {
+    public void close() {
         if (!open) {
             return;
         }
