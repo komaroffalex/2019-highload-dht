@@ -81,9 +81,9 @@ public final class HttpService extends HttpServer implements Service {
     private Response getMethodWrapper(final ByteBuffer key) throws IOException {
         try {
             final ByteBuffer duplicate = dao.get(key).duplicate();
-            final byte[] body = new byte[duplicate.remaining()];
-            duplicate.get(body);
-            return responseWrapper(Response.OK, body);
+            final byte[] res = new byte[duplicate.remaining()];
+            duplicate.get(res);
+            return responseWrapper(Response.OK, res);
         } catch (NoSuchElementException exp) {
             return responseWrapper(Response.NOT_FOUND);
         }

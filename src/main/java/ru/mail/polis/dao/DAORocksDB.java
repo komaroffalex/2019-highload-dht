@@ -3,24 +3,28 @@ package ru.mail.polis.dao;
 import org.jetbrains.annotations.NotNull;
 
 import org.rocksdb.RocksDB;
-import org.rocksdb.RocksDBException;
+import org.rocksdb.WriteOptions;
 import org.rocksdb.RocksIterator;
-import org.rocksdb.ComparatorOptions;
-import org.rocksdb.CompressionType;
-import org.rocksdb.util.BytewiseComparator;
+import org.rocksdb.RocksDBException;
 import org.rocksdb.Options;
+import org.rocksdb.CompressionType;
+import org.rocksdb.BuiltinComparator;
+
 import ru.mail.polis.Record;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
+import java.util.Arrays;
 import java.util.NoSuchElementException;
 import java.util.Iterator;
 
 public final class DAORocksDB implements DAO {
     private final RocksDB mdb;
 
+    private static volatile boolean open = false;
+    private static WriteOptions wOptions;
     private final Object objLock = new Object();
 
     private DAORocksDB(final RocksDB db) {
@@ -46,10 +50,10 @@ public final class DAORocksDB implements DAO {
                 throw new IllegalStateException("Iterator is not viable!");
             }
             final var keyByteArray = iterator.key();
+            ByteBuffer unpackedKey = compressKey(keyByteArray);
             final var valueByteArray = iterator.value();
-            final var key = ByteBuffer.wrap(keyByteArray);
             final var value = ByteBuffer.wrap(valueByteArray);
-            final var record = Record.of(key, value);
+            final var record = Record.of(unpackedKey, value);
             iterator.next();
             return record;
         }
@@ -63,9 +67,9 @@ public final class DAORocksDB implements DAO {
     @NotNull
     @Override
     public Iterator<Record> iterator(@NotNull final ByteBuffer from) {
-        final var fromByteArray = from.array();
         final RocksIterator iterator = mdb.newIterator();
-        iterator.seek(fromByteArray);
+        byte[] packedKey = decompressKey(from);
+        iterator.seek(packedKey);
         return new RocksDBRecordIterator(iterator);
     }
 
@@ -73,11 +77,9 @@ public final class DAORocksDB implements DAO {
     @Override
     public ByteBuffer get(@NotNull final ByteBuffer keys) throws IOException, NoSuchElementException {
         synchronized (objLock) {
-        final ByteBuffer copy = keys.duplicate();
-        final byte[] keyByteArray = new byte[copy.remaining()];
-        copy.get(keyByteArray);
             try {
-                final var valueByteArray = mdb.get(keyByteArray);
+                byte[] packedKey = decompressKey(keys);
+                byte[] valueByteArray = mdb.get(packedKey);
                 if (valueByteArray == null) {
                     throw new NoSuchElementException("Key is not present!");
                 }
@@ -91,14 +93,10 @@ public final class DAORocksDB implements DAO {
     @Override
     public void upsert(@NotNull final ByteBuffer keys, @NotNull final ByteBuffer values) throws IOException {
         synchronized (objLock) {
-            final ByteBuffer copy = keys.duplicate();
-            final byte[] keyByteArray = new byte[copy.remaining()];
-            copy.get(keyByteArray);
-            final ByteBuffer copyV = values.duplicate();
-            final byte[] valueByteArray = new byte[copyV.remaining()];
-            copyV.get(valueByteArray);
             try {
-                mdb.put(keyByteArray, valueByteArray);
+                byte[] packedKey = decompressKey(keys);
+                final byte[] arrayValue = copyAndExtractFromByteBuffer(values);
+                mdb.put(wOptions,packedKey, arrayValue);
             } catch (RocksDBException e) {
                 throw new DAOException("Upsert method exception!", e);
             }
@@ -107,9 +105,9 @@ public final class DAORocksDB implements DAO {
 
     @Override
     public void remove(@NotNull final ByteBuffer key) throws IOException {
-        final var keyByteArray = key.array();
         try {
-            mdb.delete(keyByteArray);
+            byte[] packedKey = decompressKey(key);
+            mdb.delete(wOptions,packedKey);
         } catch (RocksDBException  e) {
             throw new DAOException("Remove method exception!", e);
         }
@@ -124,8 +122,17 @@ public final class DAORocksDB implements DAO {
         }
     }
 
+    private static void closeDb() {
+        open = false;
+    }
+
     @Override
-    public void close() {
+    public synchronized void close() {
+        if (!open) {
+            return;
+        }
+        closeDb();
+        wOptions.close();
         mdb.close();
     }
 
@@ -133,14 +140,40 @@ public final class DAORocksDB implements DAO {
         try {
             final var options = new Options();
             options.setCreateIfMissing(true);
-            options.setErrorIfExists(false);
             options.setCompressionType(CompressionType.NO_COMPRESSION);
-            final var comparator = new BytewiseComparator(new ComparatorOptions());
-            options.setComparator(comparator);
+            options.setComparator(BuiltinComparator.BYTEWISE_COMPARATOR);
+            options.setMaxBackgroundCompactions(2);
+            options.setMaxBackgroundFlushes(2);
+            wOptions = new WriteOptions();
+            wOptions.setDisableWAL(true);
             final RocksDB db = RocksDB.open(options, data.getAbsolutePath());
+            open = true;
             return new DAORocksDB(db);
         } catch (RocksDBException e) {
             throw new DAOException("RocksDB instantiation failed!", e);
         }
+    }
+
+    private static byte[] copyAndExtractFromByteBuffer(@NotNull final ByteBuffer buffer) {
+        final ByteBuffer copy = buffer.duplicate();
+        final byte[] array = new byte[copy.remaining()];
+        copy.get(array);
+        return array;
+    }
+
+    private static byte[] decompressKey(@NotNull final ByteBuffer key) {
+        final byte[] arrayKey = copyAndExtractFromByteBuffer(key);
+        for (int i = 0; i < arrayKey.length; i++) {
+            arrayKey[i] -= Byte.MIN_VALUE;
+        }
+        return arrayKey;
+    }
+
+    private static ByteBuffer compressKey(@NotNull final byte[] key) {
+        final byte[] copy = Arrays.copyOf(key, key.length);
+        for (int i = 0; i < copy.length; i++) {
+            copy[i] += Byte.MIN_VALUE;
+        }
+        return ByteBuffer.wrap(copy);
     }
 }
