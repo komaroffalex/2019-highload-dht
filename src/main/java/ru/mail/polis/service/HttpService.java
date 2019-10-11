@@ -1,9 +1,14 @@
 package ru.mail.polis.service;
 
 import com.google.common.base.Charsets;
-import one.nio.http.*;
+
+import one.nio.http.HttpServer;
 import one.nio.http.HttpServerConfig;
 import one.nio.http.Path;
+import one.nio.http.Request;
+import one.nio.http.HttpSession;
+import one.nio.http.Response;
+import one.nio.http.Param;
 import one.nio.server.AcceptorConfig;
 import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.dao.DAO;
@@ -13,9 +18,9 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.NoSuchElementException;
 
-public class HttpService extends HttpServer implements Service {
+public final class HttpService extends HttpServer implements Service {
 
-    private DAO dao;
+    private final DAO dao;
 
     private HttpService(final HttpServerConfig config, @NotNull final DAO dao) throws IOException {
         super(config);
@@ -23,8 +28,8 @@ public class HttpService extends HttpServer implements Service {
     }
 
     public static Service create(final int port, @NotNull final DAO dao) throws IOException {
-        var acceptor = new AcceptorConfig();
-        var config = new HttpServerConfig();
+        final var acceptor = new AcceptorConfig();
+        final var config = new HttpServerConfig();
         acceptor.port = port;
         config.acceptors = new AcceptorConfig[]{acceptor};
         return new HttpService(config, dao);
@@ -41,40 +46,72 @@ public class HttpService extends HttpServer implements Service {
         return Response.ok("OK");
     }
 
+    /**
+     * /v0/entity.
+     *
+     * @param id      - id
+     * @param request - request
+     * @return Response
+     */
     @Path("/v0/entity")
-    public Response entity(@Param("id") String id, Request request) {
+    public Response entity(@Param("id") final String id, final Request request) {
         if (id == null || id.isEmpty()) {
-            return new Response(Response.BAD_REQUEST, "Id is required".getBytes(StandardCharsets.UTF_8));
+            return responseWrapper(Response.BAD_REQUEST);
         }
         try {
-            var method = request.getMethod();
-            var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
+            final var method = request.getMethod();
+            final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
             switch (method) {
                 case Request.METHOD_GET: {
-                    var value = dao.get(key);
-                    var duplicate = value.duplicate();
-                    byte[] body = new byte[duplicate.remaining()];
-                    duplicate.get(body);
-                    return new Response(Response.OK, body);
+                    return getMethodWrapper(key);
                 }
                 case Request.METHOD_PUT: {
-                    var value = ByteBuffer.wrap(request.getBody());
-                    dao.upsert(key, value);
-                    return new Response(Response.CREATED, Response.EMPTY);
+                    return putMethodWrapper(key, request);
                 }
                 case Request.METHOD_DELETE: {
-                    dao.remove(key);
-                    return new Response(Response.ACCEPTED, Response.EMPTY);
+                    return deleteMethodWrapper(key);
                 }
                 default:
-                    return new Response(Response.METHOD_NOT_ALLOWED, Response.EMPTY);
+                    return responseWrapper(Response.METHOD_NOT_ALLOWED);
             }
         }
         catch (IOException e) {
-            return  new Response(Response.INTERNAL_ERROR, Response.EMPTY);
+            return responseWrapper(Response.INTERNAL_ERROR, Response.EMPTY);
         }
         catch (NoSuchElementException e) {
-            return new Response(Response.NOT_FOUND, "Key not found".getBytes(Charsets.UTF_8));
+            return responseWrapper(Response.NOT_FOUND, "Key not found".getBytes(Charsets.UTF_8));
         }
+    }
+
+    @NotNull
+    private Response getMethodWrapper(final ByteBuffer key) throws IOException {
+        try {
+            final ByteBuffer duplicate = dao.get(key).duplicate();
+            final byte[] body = new byte[duplicate.remaining()];
+            duplicate.get(body);
+            return responseWrapper(Response.OK, body);
+        } catch (NoSuchElementException exp) {
+            return responseWrapper(Response.NOT_FOUND);
+        }
+    }
+
+    @NotNull
+    private Response putMethodWrapper(final ByteBuffer key, final Request request) throws IOException {
+        dao.upsert(key, ByteBuffer.wrap(request.getBody()));
+        return responseWrapper(Response.CREATED);
+    }
+
+    @NotNull
+    private Response deleteMethodWrapper(final ByteBuffer key) throws IOException {
+        dao.remove(key);
+        return responseWrapper(Response.ACCEPTED);
+    }
+
+    private Response responseWrapper(@NotNull final String key) {
+        return new Response(key, Response.EMPTY);
+    }
+
+    private Response responseWrapper(@NotNull final String key, @NotNull final byte[] body) {
+        return new Response(key, body);
     }
 }

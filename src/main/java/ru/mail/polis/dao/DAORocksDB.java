@@ -2,45 +2,56 @@ package ru.mail.polis.dao;
 
 import org.jetbrains.annotations.NotNull;
 
-import org.rocksdb.*;
+import org.rocksdb.FlushOptions;
+import org.rocksdb.RocksDB;
+import org.rocksdb.RocksDBException;
+import org.rocksdb.RocksIterator;
+import org.rocksdb.ComparatorOptions;
+import org.rocksdb.WriteOptions;
+import org.rocksdb.CompressionType;
 import org.rocksdb.util.BytewiseComparator;
+import org.rocksdb.Options;
 import ru.mail.polis.Record;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.*;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-public class DAORocksDB implements DAO {
-    private RocksDB mDb;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.NoSuchElementException;
+import java.util.Set;
+import java.util.Iterator;
 
-    private static volatile boolean open = false;
-    private static final ReentrantReadWriteLock LOCK = new ReentrantReadWriteLock();
+public final class DAORocksDB implements DAO {
+    private RocksDB mdb;
 
-    private static WriteOptions wOptions;
-    private static FlushOptions fOptions;
-    private final Set<RocksDBRecordIterator> openIterators = Collections.synchronizedSet(new HashSet<RocksDBRecordIterator>());
+    private static volatile boolean open;
 
-    public DAORocksDB(RocksDB db) {
-        this.mDb = db;
+    private static WriteOptions writeOptions;
+    private static FlushOptions flushOptions;
+    private final Set<RocksDBRecordIterator> openIterators = Collections.synchronizedSet(new HashSet<>());
+    private final Object LOCK = new Object();
+
+    private DAORocksDB(final RocksDB db) {
+        this.mdb = db;
     }
 
     public static class RocksDBRecordIterator implements Iterator<Record>, AutoCloseable {
 
-        private RocksIterator iterator;
+        private final RocksIterator iterator;
 
-        RocksDBRecordIterator(@NotNull RocksIterator iterator) {
+        RocksDBRecordIterator(@NotNull final RocksIterator iterator) {
             this.iterator = iterator;
         }
 
         @Override
-        public synchronized boolean hasNext() {
+        public boolean hasNext() {
             return iterator.isValid();
         }
 
         @Override
-        public synchronized  Record next() throws IllegalStateException {
+        public Record next() throws IllegalStateException {
             if (!hasNext()) {
                 throw new IllegalStateException("Iterator is not viable!");
             }
@@ -54,93 +65,90 @@ public class DAORocksDB implements DAO {
         }
 
         @Override
-        public synchronized void close() {
+        public void close() {
             iterator.close();
         }
     }
 
     @NotNull
     @Override
-    public synchronized Iterator<Record> iterator(@NotNull ByteBuffer from) {
-        var fromByteArray = from.array();
-        RocksIterator iterator = mDb.newIterator();
+    public Iterator<Record> iterator(@NotNull final ByteBuffer from) {
+        final var fromByteArray = from.array();
+        final RocksIterator iterator = mdb.newIterator();
         iterator.seek(fromByteArray);
-        var rocksDBRecIter = new RocksDBRecordIterator(iterator);
+        final var rocksDBRecIter = new RocksDBRecordIterator(iterator);
         openIterators.add(rocksDBRecIter);
         return rocksDBRecIter;
     }
 
     @NotNull
     @Override
-    public ByteBuffer get(@NotNull ByteBuffer keys) throws IOException, NoSuchElementException {
-        LOCK.readLock().lock();
+    public ByteBuffer get(@NotNull final ByteBuffer keys) throws IOException, NoSuchElementException {
         final ByteBuffer copy = keys.duplicate();
         final byte[] keyByteArray = new byte[copy.remaining()];
         copy.get(keyByteArray);
-        try {
-            final var valueByteArray = mDb.get(keyByteArray);
-            if (valueByteArray == null) {
-                throw new NoSuchElementException("Key is not present!");
+        synchronized (LOCK) {
+            try {
+                final var valueByteArray = mdb.get(keyByteArray);
+                if (valueByteArray == null) {
+                    throw new NoSuchElementException("Key is not present!");
+                }
+                return ByteBuffer.wrap(valueByteArray);
+            } catch (RocksDBException e) {
+                throw new DAOException("Get method exception!", e);
             }
-            return ByteBuffer.wrap(valueByteArray);
-        } catch (RocksDBException e) {
-            throw new DAOException("Get method exception!", e);
-        }
-        finally {
-            LOCK.readLock().unlock();
         }
     }
 
     @Override
-    public void upsert(@NotNull ByteBuffer keys, @NotNull ByteBuffer values) throws IOException {
-        LOCK.writeLock().lock();
+    public void upsert(@NotNull final ByteBuffer keys, @NotNull final ByteBuffer values) throws IOException {
         final ByteBuffer copy = keys.duplicate();
         final byte[] keyByteArray = new byte[copy.remaining()];
         copy.get(keyByteArray);
         final ByteBuffer copyV = values.duplicate();
         final byte[] valueByteArray = new byte[copyV.remaining()];
         copyV.get(valueByteArray);
-        try {
-            mDb.put(wOptions, keyByteArray, valueByteArray);
-        } catch (RocksDBException e) {
-            throw new DAOException("Upsert method exception!", e);
-        } finally {
-            LOCK.writeLock().unlock();
+        synchronized (LOCK) {
+            try {
+                mdb.put(writeOptions, keyByteArray, valueByteArray);
+            } catch (RocksDBException e) {
+                throw new DAOException("Upsert method exception!", e);
+            }
         }
     }
 
     @Override
-    public synchronized void remove(@NotNull ByteBuffer key) throws IOException {
+    public void remove(@NotNull final ByteBuffer key) throws IOException {
         final var keyByteArray = key.array();
         try {
-            mDb.delete(wOptions,keyByteArray);
+            mdb.delete(writeOptions,keyByteArray);
         } catch (RocksDBException  e) {
             throw new DAOException("Remove method exception!", e);
         }
     }
 
     @Override
-    public synchronized void compact() throws IOException {
+    public void compact() throws IOException {
         try {
-            mDb.compactRange();
+            mdb.compactRange();
         } catch (RocksDBException  e) {
             throw new DAOException("Compact method exception!", e);
         }
     }
 
     @Override
-    public synchronized void close() {
+    public void close() {
         if (!open) {
             return;
         }
         open = false;
         closeOpenIterators();
-        wOptions.close();
-        fOptions.close();
-        mDb.close();
-        wOptions = null;
-        fOptions = null;
-        mDb = null;
+        writeOptions.close();
+        flushOptions.close();
+        mdb.close();
+        writeOptions = null;
+        flushOptions = null;
+        mdb = null;
     }
 
     private void closeOpenIterators() {
@@ -148,26 +156,27 @@ public class DAORocksDB implements DAO {
         synchronized (openIterators) {
             iterators = new HashSet<>(openIterators);
         }
-        for (RocksDBRecordIterator iterator : iterators) {
+        for (final RocksDBRecordIterator iterator : iterators) {
             iterator.close();
         }
     }
 
-    static DAO create(File data) throws IOException {
+    static DAO create(final File data) throws IOException {
         try {
-            var options = new Options();
+            final var options = new Options();
             options.setCreateIfMissing(true);
             options.setErrorIfExists(false);
             options.setCompressionType(CompressionType.NO_COMPRESSION);
-            var comparator = new BytewiseComparator(new ComparatorOptions());
+            final var comparator = new BytewiseComparator(new ComparatorOptions());
             options.setComparator(comparator);
             options.setMaxBackgroundCompactions(2);
             options.setMaxBackgroundFlushes(2);
-            wOptions = new WriteOptions();
-            wOptions.setDisableWAL(true);
-            fOptions = new FlushOptions();
-            fOptions.setWaitForFlush(true);
-            RocksDB db = RocksDB.open(options, data.getAbsolutePath());
+            options.setIncreaseParallelism(4);
+            writeOptions = new WriteOptions();
+            writeOptions.setDisableWAL(true);
+            flushOptions = new FlushOptions();
+            flushOptions.setWaitForFlush(true);
+            final RocksDB db = RocksDB.open(options, data.getAbsolutePath());
             open = true;
             return new DAORocksDB(db);
         } catch (RocksDBException e) {

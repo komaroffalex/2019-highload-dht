@@ -41,7 +41,6 @@ public final class DAOFactory {
      */
     @NotNull
     public static DAO create(@NotNull final File data) throws IOException {
-        var test = Runtime.getRuntime().maxMemory();
         if (Runtime.getRuntime().maxMemory() > MAX_HEAP) {
             throw new IllegalStateException("The heap is too big. Consider setting Xmx.");
         }
