@@ -6,7 +6,6 @@ import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.RocksIterator;
 import org.rocksdb.ComparatorOptions;
-import org.rocksdb.WriteOptions;
 import org.rocksdb.CompressionType;
 import org.rocksdb.util.BytewiseComparator;
 import org.rocksdb.Options;
@@ -21,10 +20,6 @@ import java.util.Iterator;
 
 public final class DAORocksDB implements DAO {
     private RocksDB mdb;
-
-    private static volatile boolean open;
-
-    private static WriteOptions writeOptions;
 
     private final Object objLock = new Object();
 
@@ -77,10 +72,10 @@ public final class DAORocksDB implements DAO {
     @NotNull
     @Override
     public ByteBuffer get(@NotNull final ByteBuffer keys) throws IOException, NoSuchElementException {
+        synchronized (objLock) {
         final ByteBuffer copy = keys.duplicate();
         final byte[] keyByteArray = new byte[copy.remaining()];
         copy.get(keyByteArray);
-        synchronized (objLock) {
             try {
                 final var valueByteArray = mdb.get(keyByteArray);
                 if (valueByteArray == null) {
@@ -114,7 +109,7 @@ public final class DAORocksDB implements DAO {
     public void remove(@NotNull final ByteBuffer key) throws IOException {
         final var keyByteArray = key.array();
         try {
-            mdb.delete(writeOptions,keyByteArray);
+            mdb.delete(keyByteArray);
         } catch (RocksDBException  e) {
             throw new DAOException("Remove method exception!", e);
         }
@@ -129,19 +124,9 @@ public final class DAORocksDB implements DAO {
         }
     }
 
-    private static void closeDb() {
-        open = false;
-    }
-
     @Override
     public void close() {
-        if (!open) {
-            return;
-        }
-        closeDb();
-        writeOptions.close();
         mdb.close();
-        mdb = null;
     }
 
     static DAO create(final File data) throws IOException {
@@ -152,10 +137,7 @@ public final class DAORocksDB implements DAO {
             options.setCompressionType(CompressionType.NO_COMPRESSION);
             final var comparator = new BytewiseComparator(new ComparatorOptions());
             options.setComparator(comparator);
-            writeOptions = new WriteOptions();
-            writeOptions.setDisableWAL(true);
             final RocksDB db = RocksDB.open(options, data.getAbsolutePath());
-            open = true;
             return new DAORocksDB(db);
         } catch (RocksDBException e) {
             throw new DAOException("RocksDB instantiation failed!", e);
