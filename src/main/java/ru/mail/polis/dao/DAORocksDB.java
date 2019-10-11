@@ -17,10 +17,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.NoSuchElementException;
-import java.util.Set;
 import java.util.Iterator;
 
 public final class DAORocksDB implements DAO {
@@ -29,8 +26,7 @@ public final class DAORocksDB implements DAO {
     private static volatile boolean open;
 
     private static WriteOptions writeOptions;
-    private static FlushOptions flushOptions;
-    private final Set<RocksDBRecordIterator> openIterators = Collections.synchronizedSet(new HashSet<>());
+
     private final Object objLock = new Object();
 
     private DAORocksDB(final RocksDB db) {
@@ -76,9 +72,7 @@ public final class DAORocksDB implements DAO {
         final var fromByteArray = from.array();
         final RocksIterator iterator = mdb.newIterator();
         iterator.seek(fromByteArray);
-        final var rocksDBRecIter = new RocksDBRecordIterator(iterator);
-        openIterators.add(rocksDBRecIter);
-        return rocksDBRecIter;
+        return new RocksDBRecordIterator(iterator);
     }
 
     @NotNull
@@ -102,15 +96,15 @@ public final class DAORocksDB implements DAO {
 
     @Override
     public void upsert(@NotNull final ByteBuffer keys, @NotNull final ByteBuffer values) throws IOException {
-        final ByteBuffer copy = keys.duplicate();
-        final byte[] keyByteArray = new byte[copy.remaining()];
-        copy.get(keyByteArray);
-        final ByteBuffer copyV = values.duplicate();
-        final byte[] valueByteArray = new byte[copyV.remaining()];
-        copyV.get(valueByteArray);
         synchronized (objLock) {
+            final ByteBuffer copy = keys.duplicate();
+            final byte[] keyByteArray = new byte[copy.remaining()];
+            copy.get(keyByteArray);
+            final ByteBuffer copyV = values.duplicate();
+            final byte[] valueByteArray = new byte[copyV.remaining()];
+            copyV.get(valueByteArray);
             try {
-                mdb.put(writeOptions, keyByteArray, valueByteArray);
+                mdb.put(keyByteArray, valueByteArray);
             } catch (RocksDBException e) {
                 throw new DAOException("Upsert method exception!", e);
             }
@@ -146,21 +140,9 @@ public final class DAORocksDB implements DAO {
             return;
         }
         closeDb();
-        closeOpenIterators();
         writeOptions.close();
-        flushOptions.close();
         mdb.close();
         mdb = null;
-    }
-
-    private void closeOpenIterators() {
-        HashSet<RocksDBRecordIterator> iterators;
-        synchronized (openIterators) {
-            iterators = new HashSet<>(openIterators);
-        }
-        for (final RocksDBRecordIterator iterator : iterators) {
-            iterator.close();
-        }
     }
 
     static DAO create(final File data) throws IOException {
@@ -171,13 +153,8 @@ public final class DAORocksDB implements DAO {
             options.setCompressionType(CompressionType.NO_COMPRESSION);
             final var comparator = new BytewiseComparator(new ComparatorOptions());
             options.setComparator(comparator);
-            options.setMaxBackgroundCompactions(2);
-            options.setMaxBackgroundFlushes(2);
-            options.setIncreaseParallelism(4);
             writeOptions = new WriteOptions();
             writeOptions.setDisableWAL(true);
-            flushOptions = new FlushOptions();
-            flushOptions.setWaitForFlush(true);
             final RocksDB db = RocksDB.open(options, data.getAbsolutePath());
             open = true;
             return new DAORocksDB(db);

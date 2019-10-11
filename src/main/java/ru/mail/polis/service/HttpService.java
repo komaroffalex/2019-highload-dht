@@ -111,24 +111,18 @@ public final class HttpService extends HttpServer implements Service {
 
     private Response processResponse(@NotNull final ByteBuffer key, final Request request) throws IOException {
         final var method = request.getMethod();
-        try {
-            switch (method) {
-                case Request.METHOD_GET: {
-                    return getMethodWrapper(key);
-                }
-                case Request.METHOD_PUT: {
-                    return putMethodWrapper(key, request);
-                }
-                case Request.METHOD_DELETE: {
-                    return deleteMethodWrapper(key);
-                }
-                default:
-                    return responseWrapper(Response.METHOD_NOT_ALLOWED);
+        switch (method) {
+            case Request.METHOD_GET: {
+                return getMethodWrapper(key);
             }
-
-        }
-        catch (IOException e) {
-            throw new IOException(e);
+            case Request.METHOD_PUT: {
+                return putMethodWrapper(key, request);
+            }
+            case Request.METHOD_DELETE: {
+                return deleteMethodWrapper(key);
+            }
+            default:
+                return responseWrapper(Response.METHOD_NOT_ALLOWED);
         }
     }
 }
