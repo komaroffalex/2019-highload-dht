@@ -1,7 +1,5 @@
 package ru.mail.polis.service;
 
-import com.google.common.base.Charsets;
-
 import one.nio.http.HttpServer;
 import one.nio.http.HttpServerConfig;
 import one.nio.http.Path;
@@ -71,21 +69,8 @@ public final class HttpService extends HttpServer implements Service {
             return responseWrapper(Response.BAD_REQUEST);
         }
         try {
-            final var method = request.getMethod();
             final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
-            switch (method) {
-                case Request.METHOD_GET: {
-                    return getMethodWrapper(key);
-                }
-                case Request.METHOD_PUT: {
-                    return putMethodWrapper(key, request);
-                }
-                case Request.METHOD_DELETE: {
-                    return deleteMethodWrapper(key);
-                }
-                default:
-                    return responseWrapper(Response.METHOD_NOT_ALLOWED);
-            }
+            return processResponse(key, request);
         }
         catch (IOException e) {
             return responseWrapper(Response.INTERNAL_ERROR, Response.EMPTY);
@@ -122,5 +107,28 @@ public final class HttpService extends HttpServer implements Service {
 
     private Response responseWrapper(@NotNull final String key, @NotNull final byte[] body) {
         return new Response(key, body);
+    }
+
+    private Response processResponse(@NotNull final ByteBuffer key, final Request request) throws IOException {
+        final var method = request.getMethod();
+        try {
+            switch (method) {
+                case Request.METHOD_GET: {
+                    return getMethodWrapper(key);
+                }
+                case Request.METHOD_PUT: {
+                    return putMethodWrapper(key, request);
+                }
+                case Request.METHOD_DELETE: {
+                    return deleteMethodWrapper(key);
+                }
+                default:
+                    return responseWrapper(Response.METHOD_NOT_ALLOWED);
+            }
+
+        }
+        catch (IOException e) {
+            throw new IOException(e);
+        }
     }
 }
