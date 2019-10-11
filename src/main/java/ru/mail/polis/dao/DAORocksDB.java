@@ -2,7 +2,6 @@ package ru.mail.polis.dao;
 
 import org.jetbrains.annotations.NotNull;
 
-import org.rocksdb.FlushOptions;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.RocksIterator;
