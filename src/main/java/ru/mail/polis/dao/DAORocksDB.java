@@ -19,7 +19,7 @@ import java.util.NoSuchElementException;
 import java.util.Iterator;
 
 public final class DAORocksDB implements DAO {
-    private RocksDB mdb;
+    private final RocksDB mdb;
 
     private final Object objLock = new Object();
 
