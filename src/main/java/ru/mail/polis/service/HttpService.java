@@ -27,6 +27,13 @@ public final class HttpService extends HttpServer implements Service {
         this.dao = dao;
     }
 
+    /**
+     * Create the HTTP server.
+     *
+     * @param port to accept HTTP connections
+     * @param dao to initialize the DAO instance within the server
+     * @return config
+     */
     public static Service create(final int port, @NotNull final DAO dao) throws IOException {
         final var acceptor = new AcceptorConfig();
         final var config = new HttpServerConfig();
@@ -41,6 +48,11 @@ public final class HttpService extends HttpServer implements Service {
         session.sendResponse(response);
     }
 
+    /**
+     * Serve requests for status.
+     *
+     * @return status
+     */
     @Path("/v0/status")
     public Response status() {
         return Response.ok("OK");
@@ -77,9 +89,6 @@ public final class HttpService extends HttpServer implements Service {
         }
         catch (IOException e) {
             return responseWrapper(Response.INTERNAL_ERROR, Response.EMPTY);
-        }
-        catch (NoSuchElementException e) {
-            return responseWrapper(Response.NOT_FOUND, "Key not found".getBytes(Charsets.UTF_8));
         }
     }
 

@@ -31,7 +31,7 @@ public final class DAORocksDB implements DAO {
     private static WriteOptions writeOptions;
     private static FlushOptions flushOptions;
     private final Set<RocksDBRecordIterator> openIterators = Collections.synchronizedSet(new HashSet<>());
-    private final Object LOCK = new Object();
+    private final Object objLock = new Object();
 
     private DAORocksDB(final RocksDB db) {
         this.mdb = db;
@@ -87,7 +87,7 @@ public final class DAORocksDB implements DAO {
         final ByteBuffer copy = keys.duplicate();
         final byte[] keyByteArray = new byte[copy.remaining()];
         copy.get(keyByteArray);
-        synchronized (LOCK) {
+        synchronized (objLock) {
             try {
                 final var valueByteArray = mdb.get(keyByteArray);
                 if (valueByteArray == null) {
@@ -108,7 +108,7 @@ public final class DAORocksDB implements DAO {
         final ByteBuffer copyV = values.duplicate();
         final byte[] valueByteArray = new byte[copyV.remaining()];
         copyV.get(valueByteArray);
-        synchronized (LOCK) {
+        synchronized (objLock) {
             try {
                 mdb.put(writeOptions, keyByteArray, valueByteArray);
             } catch (RocksDBException e) {
@@ -136,18 +136,20 @@ public final class DAORocksDB implements DAO {
         }
     }
 
+    private static void closeDb() {
+        open = false;
+    }
+
     @Override
     public void close() {
         if (!open) {
             return;
         }
-        open = false;
+        closeDb();
         closeOpenIterators();
         writeOptions.close();
         flushOptions.close();
         mdb.close();
-        writeOptions = null;
-        flushOptions = null;
         mdb = null;
     }
 
