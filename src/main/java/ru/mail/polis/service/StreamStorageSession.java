@@ -9,12 +9,13 @@ import ru.mail.polis.Record;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
 
 final class StreamStorageSession extends HttpSession {
-    private static final byte[] CRLF = "\r\n".getBytes();
+    private static final byte[] CRLF = "\r\n".getBytes(StandardCharsets.UTF_8);
     private static final byte LF = '\n';
-    private static final byte[] EMPTY_CHUNK = "0\r\n\r\n".getBytes();
+    private static final byte[] EMPTY_CHUNK = "0\r\n\r\n".getBytes(StandardCharsets.UTF_8);
 
     private Iterator<Record> records;
 
@@ -65,7 +66,7 @@ final class StreamStorageSession extends HttpSession {
             final byte[] chunk = getByteArr(chunkLength);
             final ByteBuffer buffer = ByteBuffer.wrap(chunk);
 
-            buffer.put(size.getBytes());
+            buffer.put(size.getBytes(StandardCharsets.UTF_8));
             buffer.put(CRLF);
             buffer.put(key);
             buffer.put(LF);
