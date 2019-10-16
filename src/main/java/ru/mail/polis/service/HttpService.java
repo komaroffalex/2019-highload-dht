@@ -77,6 +77,20 @@ public final class HttpService extends HttpServer implements Service {
         }
     }
 
+    /**
+     * Retrieve all entities from start to end.
+     * If end is missing -- retrieve all entities up to the end.
+     *
+     * @param start of key range (required)
+     * @param end   of key range (optional)
+     */
+    @Path("/v0/entities")
+    public void entities(@Param("start") final String start, @Param("end") final String end,
+            @NotNull final HttpSession session) throws IOException {
+
+    }
+
+
     @NotNull
     private Response getMethodWrapper(final ByteBuffer key) throws IOException {
         try {
