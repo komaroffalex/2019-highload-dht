@@ -47,6 +47,10 @@ final class StreamStorageSession extends HttpSession {
         next();
     }
 
+    private byte[] getByteArr(final int size){
+        return new byte[size];
+    }
+
     private void next() throws IOException {
         while (records.hasNext() && queueHead == null) {
             final Record record = records.next();
@@ -58,7 +62,7 @@ final class StreamStorageSession extends HttpSession {
 
             final int chunkLength = size.length() + 2 + payloadLength + 2;
 
-            final byte[] chunk = new byte[chunkLength];
+            final byte[] chunk = getByteArr(chunkLength);
             final ByteBuffer buffer = ByteBuffer.wrap(chunk);
 
             buffer.put(size.getBytes());

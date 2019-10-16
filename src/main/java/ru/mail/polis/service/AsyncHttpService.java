@@ -1,11 +1,18 @@
 package ru.mail.polis.service;
 
-import one.nio.http.*;
+
+import one.nio.http.HttpServer;
+import one.nio.http.HttpServerConfig;
+import one.nio.http.HttpSession;
+import one.nio.http.Path;
+import one.nio.http.Response;
+import one.nio.http.Request;
 import one.nio.net.Socket;
 import one.nio.server.AcceptorConfig;
 import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.Record;
 import ru.mail.polis.dao.DAO;
+
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -14,7 +21,9 @@ import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.concurrent.Executor;
 
-import static one.nio.http.Response.*;
+import static one.nio.http.Response.METHOD_NOT_ALLOWED;
+import static one.nio.http.Response.INTERNAL_ERROR;
+import static one.nio.http.Response.BAD_REQUEST;
 
 public class AsyncHttpService extends HttpServer implements Service {
     @NotNull
@@ -22,7 +31,15 @@ public class AsyncHttpService extends HttpServer implements Service {
     @NotNull
     private final Executor workers;
 
-    public AsyncHttpService(final int port, @NotNull final DAO dao, @NotNull final Executor workers) throws IOException {
+    /**
+     * Create the Async HTTP server.
+     *
+     * @param port to accept HTTP connections
+     * @param dao to initialize the DAO instance within the server
+     * @param workers thread workers
+     */
+    public AsyncHttpService(final int port, @NotNull final DAO dao,
+                            @NotNull final Executor workers) throws IOException {
         super(from(port));
         this.dao = dao;
         this.workers = workers;
@@ -34,7 +51,7 @@ public class AsyncHttpService extends HttpServer implements Service {
         ac.reusePort = true;
         ac.deferAccept = true;
 
-        HttpServerConfig config = new HttpServerConfig();
+        final HttpServerConfig config = new HttpServerConfig();
         config.acceptors = new AcceptorConfig[]{ac};
         return config;
     }
@@ -61,7 +78,7 @@ public class AsyncHttpService extends HttpServer implements Service {
         }
         final String id = request.getParameter("id=");
         final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
-        if (id == null || id.isEmpty()) {
+        if (id.isEmpty()) {
             executeAsync(session, () -> responseWrapper(Response.BAD_REQUEST));
             return;
         }
@@ -78,6 +95,7 @@ public class AsyncHttpService extends HttpServer implements Service {
                     return;
                 default:
                     session.sendError(METHOD_NOT_ALLOWED, "Wrong method");
+                    return;
             }
         } catch (Exception e) {
             session.sendError(INTERNAL_ERROR, e.getMessage());
@@ -95,6 +113,7 @@ public class AsyncHttpService extends HttpServer implements Service {
                 break;
             default:
                 session.sendError(BAD_REQUEST, "Wrong path");
+                break;
         }
     }
 
@@ -140,23 +159,27 @@ public class AsyncHttpService extends HttpServer implements Service {
                     dao.range(ByteBuffer.wrap(start.getBytes()),
                             end == null ? null : ByteBuffer.wrap(end.getBytes()));
             ((StreamStorageSession) session).stream(records);
-        } catch (Exception e)
+        } catch (IOException e)
         {
             session.sendError(INTERNAL_ERROR, e.getMessage());
         }
     }
 
-
     @NotNull
     private Response getMethodWrapper(final ByteBuffer key) throws IOException {
         try {
-            final ByteBuffer duplicate = dao.get(key).duplicate();
-            final byte[] res = new byte[duplicate.remaining()];
-            duplicate.get(res);
+            final byte[] res = copyAndExtractFromByteBuffer(key);
             return responseWrapper(Response.OK, res);
         } catch (NoSuchElementException exp) {
             return responseWrapper(Response.NOT_FOUND);
         }
+    }
+
+    private byte[] copyAndExtractFromByteBuffer(@NotNull final ByteBuffer key) throws IOException {
+        final ByteBuffer dct = dao.get(key).duplicate();
+        final byte[] res = new byte[dct.remaining()];
+        dct.get(res);
+        return res;
     }
 
     @NotNull

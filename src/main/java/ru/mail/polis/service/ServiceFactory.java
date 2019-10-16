@@ -19,7 +19,6 @@ package ru.mail.polis.service;
 import java.io.IOException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.jetbrains.annotations.NotNull;
