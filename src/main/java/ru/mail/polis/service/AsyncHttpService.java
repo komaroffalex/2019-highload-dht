@@ -1,6 +1,5 @@
 package ru.mail.polis.service;
 
-
 import one.nio.http.HttpServer;
 import one.nio.http.HttpServerConfig;
 import one.nio.http.HttpSession;
@@ -13,13 +12,14 @@ import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.Record;
 import ru.mail.polis.dao.DAO;
 
-
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.concurrent.Executor;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import static one.nio.http.Response.METHOD_NOT_ALLOWED;
 import static one.nio.http.Response.INTERNAL_ERROR;
@@ -29,20 +29,22 @@ public class AsyncHttpService extends HttpServer implements Service {
     @NotNull
     private final DAO dao;
     @NotNull
-    private final Executor workers;
+    private final Executor workerThreads;
+
+    private static final Logger logger = Logger.getLogger(AsyncHttpService.class.getName());
 
     /**
      * Create the Async HTTP server.
      *
      * @param port to accept HTTP connections
      * @param dao to initialize the DAO instance within the server
-     * @param workers thread workers
+     * @param workers thread workerThreads
      */
     public AsyncHttpService(final int port, @NotNull final DAO dao,
                             @NotNull final Executor workers) throws IOException {
         super(from(port));
         this.dao = dao;
-        this.workers = workers;
+        this.workerThreads = workers;
     }
 
     private static HttpServerConfig from(final int port) {
@@ -73,15 +75,15 @@ public class AsyncHttpService extends HttpServer implements Service {
 
     private void entity(@NotNull final Request request, final HttpSession session) throws IOException {
         if (request.getURI().equals("/v0/entity")) {
-            executeAsync(session, () -> responseWrapper(Response.BAD_REQUEST));
+            executeAsync(session, () -> responseWrapper(BAD_REQUEST));
             return;
         }
         final String id = request.getParameter("id=");
-        final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
         if (id.isEmpty()) {
-            executeAsync(session, () -> responseWrapper(Response.BAD_REQUEST));
+            executeAsync(session, () -> responseWrapper(BAD_REQUEST));
             return;
         }
+        final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
         try {
             switch (request.getMethod()) {
                 case Request.METHOD_GET:
@@ -97,7 +99,7 @@ public class AsyncHttpService extends HttpServer implements Service {
                     session.sendError(METHOD_NOT_ALLOWED, "Wrong method");
                     return;
             }
-        } catch (Exception e) {
+        } catch (IOException e) {
             session.sendError(INTERNAL_ERROR, e.getMessage());
         }
     }
@@ -117,16 +119,16 @@ public class AsyncHttpService extends HttpServer implements Service {
         }
     }
 
-    private void executeAsync(@NotNull final HttpSession session, @NotNull final Action action) {
-        workers.execute(() -> {
+    private void executeAsync(@NotNull final HttpSession session, @NotNull final Action action) throws IOException {
+        workerThreads.execute(() -> {
             try {
                 session.sendResponse(action.act());
             }
-            catch (Exception e) {
+            catch (IOException e) {
                 try {
                     session.sendError(INTERNAL_ERROR, e.getMessage());
                 } catch (IOException ex) {
-                    ex.printStackTrace();
+                    logger.log(Level.SEVERE,"Exception while processing request: ", e);
                 }
             }
         });
@@ -156,8 +158,8 @@ public class AsyncHttpService extends HttpServer implements Service {
 
         try {
             final Iterator<Record> records =
-                    dao.range(ByteBuffer.wrap(start.getBytes()),
-                            end == null ? null : ByteBuffer.wrap(end.getBytes()));
+                    dao.range(ByteBuffer.wrap(start.getBytes(StandardCharsets.UTF_8)),
+                            end == null ? null : ByteBuffer.wrap(end.getBytes(StandardCharsets.UTF_8)));
             ((StreamStorageSession) session).stream(records);
         } catch (IOException e)
         {
