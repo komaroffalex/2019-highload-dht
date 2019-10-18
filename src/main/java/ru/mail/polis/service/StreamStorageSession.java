@@ -75,12 +75,12 @@ final class StreamStorageSession extends HttpSession {
             write(chunk, 0, chunkLength);
         }
 
-        if(!records.hasNext()) {
+        if (!records.hasNext()) {
             write(EMPTY_CHUNK, 0, EMPTY_CHUNK.length);
 
             server.incRequestsProcessed();
 
-            if((handling = pipeline.pollFirst()) != null) {
+            if ((handling = pipeline.pollFirst()) != null) {
                 if(handling == FIN) {
                     scheduleClose();
                 } else {
@@ -93,7 +93,4 @@ final class StreamStorageSession extends HttpSession {
             }
         }
     }
-
-
-
 }

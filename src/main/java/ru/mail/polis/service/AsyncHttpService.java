@@ -75,12 +75,12 @@ public class AsyncHttpService extends HttpServer implements Service {
 
     private void entity(@NotNull final Request request, final HttpSession session) throws IOException {
         if (request.getURI().equals("/v0/entity")) {
-            executeAsync(session, () -> responseWrapper(BAD_REQUEST));
+            session.sendError(BAD_REQUEST, "No specified parameters");
             return;
         }
         final String id = request.getParameter("id=");
         if (id.isEmpty()) {
-            executeAsync(session, () -> responseWrapper(BAD_REQUEST));
+            session.sendError(BAD_REQUEST, "Id is not specified");
             return;
         }
         final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
@@ -108,10 +108,10 @@ public class AsyncHttpService extends HttpServer implements Service {
     public void handleDefault(@NotNull final Request request, @NotNull final HttpSession session) throws IOException {
         switch(request.getPath()) {
             case "/v0/entity":
-                entity(request,session);
+                entity(request, session);
                 break;
             case "/v0/entities":
-                entities(request,session);
+                entities(request, session);
                 break;
             default:
                 session.sendError(BAD_REQUEST, "Wrong path");
@@ -123,8 +123,7 @@ public class AsyncHttpService extends HttpServer implements Service {
         workerThreads.execute(() -> {
             try {
                 session.sendResponse(action.act());
-            }
-            catch (IOException e) {
+            } catch (IOException e) {
                 try {
                     session.sendError(INTERNAL_ERROR, e.getMessage());
                 } catch (IOException ex) {
@@ -146,13 +145,13 @@ public class AsyncHttpService extends HttpServer implements Service {
             return;
         }
 
-        if(request.getMethod() != Request.METHOD_GET) {
+        if (request.getMethod() != Request.METHOD_GET) {
             session.sendError(METHOD_NOT_ALLOWED, "Wrong method");
             return;
         }
 
         String end = request.getParameter("end=");
-        if(end != null && end.isEmpty()) {
+        if (end != null && end.isEmpty()) {
             end = null;
         }
 
@@ -161,8 +160,7 @@ public class AsyncHttpService extends HttpServer implements Service {
                     dao.range(ByteBuffer.wrap(start.getBytes(StandardCharsets.UTF_8)),
                             end == null ? null : ByteBuffer.wrap(end.getBytes(StandardCharsets.UTF_8)));
             ((StreamStorageSession) session).stream(records);
-        } catch (IOException e)
-        {
+        } catch (IOException e) {
             session.sendError(INTERNAL_ERROR, e.getMessage());
         }
     }
