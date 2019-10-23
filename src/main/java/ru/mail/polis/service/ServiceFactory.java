@@ -25,6 +25,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.jetbrains.annotations.NotNull;
 
 import ru.mail.polis.dao.DAO;
+import ru.mail.polis.service.cluster.ClusterNodes;
 
 /**
  * Constructs {@link Service} instances.
@@ -59,8 +60,7 @@ public final class ServiceFactory {
             throw new IllegalArgumentException("Port out of range");
         }
 
-        final Executor executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors(),
-                new ThreadFactoryBuilder().setNameFormat("worker").build());
-        return new AsyncHttpService(port,dao,executor);
+        final ClusterNodes nodes = new ClusterNodes(topology, "http://localhost:" + port);
+        return AsyncHttpService.create(port, dao, nodes);
     }
 }

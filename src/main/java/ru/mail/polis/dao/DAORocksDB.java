@@ -23,7 +23,6 @@ import java.util.Iterator;
 public final class DAORocksDB implements DAO {
     private final RocksDB mdb;
 
-    private static volatile boolean open;
     private static WriteOptions wOptions;
     private final Object objLock = new Object();
 
@@ -122,18 +121,14 @@ public final class DAORocksDB implements DAO {
         }
     }
 
-    private static void closeDb() {
-        open = false;
-    }
-
     @Override
-    public void close() {
-        if (!open) {
-            return;
+    public void close() throws DAOException {
+        try {
+            mdb.syncWal();
+            mdb.closeE();
+        } catch (RocksDBException exception) {
+            throw new DAOException("Error while close", exception);
         }
-        closeDb();
-        wOptions.close();
-        mdb.close();
     }
 
     static DAO create(final File data) throws IOException {
@@ -147,7 +142,6 @@ public final class DAORocksDB implements DAO {
             wOptions = new WriteOptions();
             wOptions.setDisableWAL(true);
             final RocksDB db = RocksDB.open(options, data.getAbsolutePath());
-            open = true;
             return new DAORocksDB(db);
         } catch (RocksDBException e) {
             throw new DAOException("RocksDB instantiation failed!", e);

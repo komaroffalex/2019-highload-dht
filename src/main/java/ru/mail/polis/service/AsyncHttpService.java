@@ -1,23 +1,32 @@
 package ru.mail.polis.service;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import one.nio.http.HttpServer;
 import one.nio.http.HttpServerConfig;
 import one.nio.http.HttpSession;
 import one.nio.http.Path;
 import one.nio.http.Response;
 import one.nio.http.Request;
+import one.nio.http.HttpClient;
+import one.nio.http.HttpException;
+import one.nio.pool.PoolException;
 import one.nio.net.Socket;
+import one.nio.net.ConnectionString;
 import one.nio.server.AcceptorConfig;
 import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.Record;
 import ru.mail.polis.dao.DAO;
+import ru.mail.polis.service.cluster.ClusterNodes;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -31,6 +40,10 @@ public class AsyncHttpService extends HttpServer implements Service {
     @NotNull
     private final Executor workerThreads;
 
+    private final ClusterNodes nodes;
+
+    private final Map<String, HttpClient> clusterClients;
+
     private static final Logger logger = Logger.getLogger(AsyncHttpService.class.getName());
 
     /**
@@ -38,14 +51,59 @@ public class AsyncHttpService extends HttpServer implements Service {
      *
      * @param port to accept HTTP connections
      * @param dao to initialize the DAO instance within the server
-     * @param workers thread workerThreads
      */
-    public AsyncHttpService(final int port, @NotNull final DAO dao,
-                            @NotNull final Executor workers) throws IOException {
+    public AsyncHttpService(final int port, @NotNull final DAO dao) throws IOException {
         super(from(port));
         this.dao = dao;
-        this.workerThreads = workers;
+        this.workerThreads = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors(),
+                new ThreadFactoryBuilder().setNameFormat("worker").build());
+        this.nodes = null;
+        this.clusterClients = null;
     }
+
+    /**
+     * Create the HTTP Cluster server.
+     *
+     * @param config HTTP server configurations
+     * @param dao to initialize the DAO instance within the server
+     * @param nodes to represent cluster nodes
+     * @param clusterClients initialized cluster clients
+     */
+    public AsyncHttpService(final HttpServerConfig config, @NotNull final DAO dao,
+                            @NotNull final ClusterNodes nodes,
+                            @NotNull final Map<String, HttpClient> clusterClients) throws IOException {
+        super(config);
+        this.dao = dao;
+        this.workerThreads = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors(),
+                new ThreadFactoryBuilder().setNameFormat("worker").build());
+        this.nodes = nodes;
+        this.clusterClients = clusterClients;
+    }
+
+    /**
+     * Create the HTTP server.
+     *
+     * @param port to accept HTTP connections
+     * @param dao to initialize the DAO instance within the server
+     * @return config
+     */
+    public static Service create(final int port, @NotNull final DAO dao,
+                                 @NotNull final ClusterNodes nodes) throws IOException {
+        final var acceptor = new AcceptorConfig();
+        final var config = new HttpServerConfig();
+        acceptor.port = port;
+        config.acceptors = new AcceptorConfig[]{acceptor};
+        config.maxWorkers = Runtime.getRuntime().availableProcessors();
+        config.queueTime = 10; // ms
+        Map<String, HttpClient> clusterClients = new HashMap<>();
+        for (final String it : nodes.getNodes()) {
+            if (!nodes.getId().equals(it) && !clusterClients.containsKey(it)) {
+                clusterClients.put(it, new HttpClient(new ConnectionString(it + "?timeout=100")));
+            }
+        }
+        return new AsyncHttpService(config, dao, nodes, clusterClients);
+    }
+
 
     private static HttpServerConfig from(final int port) {
         final AcceptorConfig ac = new AcceptorConfig();
@@ -84,6 +142,13 @@ public class AsyncHttpService extends HttpServer implements Service {
             return;
         }
         final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
+
+        final String keyClusterPartition = nodes.keyBelongsTo(key);
+        if(!nodes.getId().equals(keyClusterPartition)) {
+            executeAsync(session, () -> forwardRequestTo(keyClusterPartition, request));
+            return;
+        }
+
         try {
             switch (request.getMethod()) {
                 case Request.METHOD_GET:
@@ -200,5 +265,14 @@ public class AsyncHttpService extends HttpServer implements Service {
 
     private Response responseWrapper(@NotNull final String key, @NotNull final byte[] body) {
         return new Response(key, body);
+    }
+
+    private Response forwardRequestTo(@NotNull final String cluster, final Request request) throws IOException {
+
+        try {
+            return clusterClients.get(cluster).invoke(request);
+        } catch (InterruptedException | PoolException | HttpException e) {
+            throw new IOException("Forwarding failed for..." + e.getMessage());
+        }
     }
 }
