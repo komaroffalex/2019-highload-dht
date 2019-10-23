@@ -267,12 +267,11 @@ public class AsyncHttpService extends HttpServer implements Service {
     }
 
     private Response forwardRequestTo(@NotNull final String cluster, final Request request) throws IOException {
-
         try {
             return clusterClients.get(cluster).invoke(request);
         } catch (InterruptedException | PoolException | HttpException e) {
             logger.log(Level.SEVERE,"Exception while forwarding request: ", e);
-            throw new IOException("Forwarding failed for..." + e.getMessage());
+            return responseWrapper(INTERNAL_ERROR);
         }
     }
 }
