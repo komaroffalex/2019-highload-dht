@@ -95,7 +95,7 @@ public class AsyncHttpService extends HttpServer implements Service {
         config.acceptors = new AcceptorConfig[]{acceptor};
         config.maxWorkers = Runtime.getRuntime().availableProcessors();
         config.queueTime = 10; // ms
-        Map<String, HttpClient> clusterClients = new HashMap<>();
+        final Map<String, HttpClient> clusterClients = new HashMap<>();
         for (final String it : nodes.getNodes()) {
             if (!nodes.getId().equals(it) && !clusterClients.containsKey(it)) {
                 clusterClients.put(it, new HttpClient(new ConnectionString(it + "?timeout=100")));
@@ -103,7 +103,6 @@ public class AsyncHttpService extends HttpServer implements Service {
         }
         return new AsyncHttpService(config, dao, nodes, clusterClients);
     }
-
 
     private static HttpServerConfig from(final int port) {
         final AcceptorConfig ac = new AcceptorConfig();
@@ -272,6 +271,7 @@ public class AsyncHttpService extends HttpServer implements Service {
         try {
             return clusterClients.get(cluster).invoke(request);
         } catch (InterruptedException | PoolException | HttpException e) {
+            logger.log(Level.SEVERE,"Exception while forwarding request: ", e);
             throw new IOException("Forwarding failed for..." + e.getMessage());
         }
     }

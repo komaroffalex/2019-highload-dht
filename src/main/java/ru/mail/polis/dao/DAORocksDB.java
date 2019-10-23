@@ -107,7 +107,7 @@ public final class DAORocksDB implements DAO {
         try {
             final byte[] packedKey = decompressKey(key);
             mdb.delete(wOptions,packedKey);
-        } catch (RocksDBException  e) {
+        } catch (RocksDBException e) {
             throw new DAOException("Remove method exception!", e);
         }
     }
@@ -116,7 +116,7 @@ public final class DAORocksDB implements DAO {
     public void compact() throws IOException {
         try {
             mdb.compactRange();
-        } catch (RocksDBException  e) {
+        } catch (RocksDBException e) {
             throw new DAOException("Compact method exception!", e);
         }
     }
