@@ -252,29 +252,19 @@ public class AsyncHttpService extends HttpServer implements Service {
         final byte[] ret = new byte[val.remaining()];
         val.get(ret);
         return ret;
-        /*
-        final ByteBuffer dct = dao.get(key).duplicate();
-        final byte[] res = new byte[dct.remaining()];
-        dct.get(res);
-        return res;
-        */
     }
 
     @NotNull
     private Response putMethodWrapper(final ByteBuffer key, final Request request) throws IOException {
         dao.upsertRecordWithTimestamp(key, ByteBuffer.wrap(request.getBody()));
-        /*
-        dao.upsert(key, ByteBuffer.wrap(request.getBody()));
-        */
+
         return responseWrapper(Response.CREATED);
     }
 
     @NotNull
     private Response deleteMethodWrapper(final ByteBuffer key) throws IOException {
         dao.removeRecordWithTimestamp(key);
-        /*
-        dao.remove(key);
-        */
+
         return responseWrapper(Response.ACCEPTED);
     }
 
