@@ -16,6 +16,8 @@ import one.nio.server.AcceptorConfig;
 import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.Record;
 import ru.mail.polis.dao.DAO;
+import ru.mail.polis.dao.DAORocksDB;
+import ru.mail.polis.dao.TimestampRecord;
 import ru.mail.polis.service.cluster.ClusterNodes;
 
 import java.io.IOException;
@@ -36,7 +38,7 @@ import static one.nio.http.Response.BAD_REQUEST;
 
 public class AsyncHttpService extends HttpServer implements Service {
     @NotNull
-    private final DAO dao;
+    private final DAORocksDB dao;
     @NotNull
     private final Executor workerThreads;
 
@@ -54,7 +56,7 @@ public class AsyncHttpService extends HttpServer implements Service {
      */
     public AsyncHttpService(final int port, @NotNull final DAO dao) throws IOException {
         super(from(port));
-        this.dao = dao;
+        this.dao = (DAORocksDB) dao;
         this.workerThreads = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors(),
                 new ThreadFactoryBuilder().setNameFormat("worker").build());
         this.nodes = null;
@@ -73,7 +75,7 @@ public class AsyncHttpService extends HttpServer implements Service {
                             @NotNull final ClusterNodes nodes,
                             @NotNull final Map<String, HttpClient> clusterClients) throws IOException {
         super(config);
-        this.dao = dao;
+        this.dao = (DAORocksDB) dao;
         this.workerThreads = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors(),
                 new ThreadFactoryBuilder().setNameFormat("worker").build());
         this.nodes = nodes;
@@ -240,21 +242,39 @@ public class AsyncHttpService extends HttpServer implements Service {
     }
 
     private byte[] copyAndExtractFromByteBuffer(@NotNull final ByteBuffer key) throws IOException {
+        final TimestampRecord res = dao.getRecordWithTimestamp(key);
+        if(!res.isValue()){
+            throw new NoSuchElementException("Element not found!");
+        }
+        final long tmstmp = res.getTimestamp();
+
+        final var val = res.getValue().duplicate();
+        final byte[] ret = new byte[val.remaining()];
+        val.get(ret);
+        return ret;
+        /*
         final ByteBuffer dct = dao.get(key).duplicate();
         final byte[] res = new byte[dct.remaining()];
         dct.get(res);
         return res;
+        */
     }
 
     @NotNull
     private Response putMethodWrapper(final ByteBuffer key, final Request request) throws IOException {
+        dao.upsertRecordWithTimestamp(key, ByteBuffer.wrap(request.getBody()));
+        /*
         dao.upsert(key, ByteBuffer.wrap(request.getBody()));
+        */
         return responseWrapper(Response.CREATED);
     }
 
     @NotNull
     private Response deleteMethodWrapper(final ByteBuffer key) throws IOException {
+        dao.removeRecordWithTimestamp(key);
+        /*
         dao.remove(key);
+        */
         return responseWrapper(Response.ACCEPTED);
     }
 

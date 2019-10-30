@@ -63,6 +63,39 @@ public final class DAORocksDB implements DAO {
         }
     }
 
+    public static class RocksDBRecordWithTimestampIterator implements Iterator<TimestampRecordAndKey>, AutoCloseable {
+
+        private final RocksIterator iterator;
+
+        RocksDBRecordWithTimestampIterator(@NotNull final RocksIterator iterator) {
+            this.iterator = iterator;
+        }
+
+        @Override
+        public boolean hasNext() {
+            return iterator.isValid();
+        }
+
+        @Override
+        public TimestampRecordAndKey next() throws IllegalStateException {
+            if (!hasNext()) {
+                throw new IllegalStateException("Iterator is not viable!");
+            }
+            final var keyByteArray = iterator.key();
+            final ByteBuffer unpackedKey = compressKey(keyByteArray);
+            final var valueByteArray = iterator.value();
+            final var value = TimestampRecord.fromBytes(valueByteArray);
+            final var recordWithTimestamp = TimestampRecordAndKey.fromKeyValue(unpackedKey, value);
+            iterator.next();
+            return recordWithTimestamp;
+        }
+
+        @Override
+        public void close() {
+            iterator.close();
+        }
+    }
+
     @NotNull
     @Override
     public Iterator<Record> iterator(@NotNull final ByteBuffer from) {
@@ -89,13 +122,40 @@ public final class DAORocksDB implements DAO {
         }
     }
 
+    @NotNull
+    public TimestampRecord getRecordWithTimestamp(@NotNull final ByteBuffer keys) throws IOException, NoSuchElementException {
+        synchronized (objLock) {
+            try {
+                final byte[] packedKey = decompressKey(keys);
+                final byte[] valueByteArray = mdb.get(packedKey);
+                return TimestampRecord.fromBytes(valueByteArray);
+            } catch (RocksDBException exception) {
+                throw new DAOException("Error while get", exception);
+            }
+        }
+    }
+
     @Override
     public void upsert(@NotNull final ByteBuffer keys, @NotNull final ByteBuffer values) throws IOException {
         synchronized (objLock) {
             try {
                 final byte[] packedKey = decompressKey(keys);
                 final byte[] arrayValue = copyAndExtractFromByteBuffer(values);
-                mdb.put(wOptions,packedKey, arrayValue);
+                mdb.put(wOptions, packedKey, arrayValue);
+            } catch (RocksDBException e) {
+                throw new DAOException("Upsert method exception!", e);
+            }
+        }
+    }
+
+    public void upsertRecordWithTimestamp(@NotNull final ByteBuffer keys,
+                                          @NotNull final ByteBuffer values) throws IOException {
+        synchronized (objLock) {
+            try {
+                final var record = TimestampRecord.fromValue(values, System.currentTimeMillis());
+                final byte[] packedKey = decompressKey(keys);
+                final byte[] arrayValue = record.toBytes();
+                mdb.put(wOptions, packedKey, arrayValue);
             } catch (RocksDBException e) {
                 throw new DAOException("Upsert method exception!", e);
             }
@@ -107,6 +167,17 @@ public final class DAORocksDB implements DAO {
         try {
             final byte[] packedKey = decompressKey(key);
             mdb.delete(wOptions,packedKey);
+        } catch (RocksDBException e) {
+            throw new DAOException("Remove method exception!", e);
+        }
+    }
+
+    public void removeRecordWithTimestamp(@NotNull final ByteBuffer key) throws IOException {
+        try {
+            final byte[] packedKey = decompressKey(key);
+            final var record = TimestampRecord.tombstone(System.currentTimeMillis());
+            final byte[] arrayValue = record.toBytes();
+            mdb.put(wOptions, packedKey, arrayValue);
         } catch (RocksDBException e) {
             throw new DAOException("Remove method exception!", e);
         }
