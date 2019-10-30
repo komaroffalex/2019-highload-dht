@@ -63,39 +63,6 @@ public final class DAORocksDB implements DAO {
         }
     }
 
-    public static class RocksDBRecordWithTimestampIterator implements Iterator<TimestampRecordAndKey>, AutoCloseable {
-
-        private final RocksIterator iterator;
-
-        RocksDBRecordWithTimestampIterator(@NotNull final RocksIterator iterator) {
-            this.iterator = iterator;
-        }
-
-        @Override
-        public boolean hasNext() {
-            return iterator.isValid();
-        }
-
-        @Override
-        public TimestampRecordAndKey next() throws IllegalStateException {
-            if (!hasNext()) {
-                throw new IllegalStateException("Iterator is not viable!");
-            }
-            final var keyByteArray = iterator.key();
-            final ByteBuffer unpackedKey = compressKey(keyByteArray);
-            final var valueByteArray = iterator.value();
-            final var value = TimestampRecord.fromBytes(valueByteArray);
-            final var recordWithTimestamp = TimestampRecordAndKey.fromKeyValue(unpackedKey, value);
-            iterator.next();
-            return recordWithTimestamp;
-        }
-
-        @Override
-        public void close() {
-            iterator.close();
-        }
-    }
-
     @NotNull
     @Override
     public Iterator<Record> iterator(@NotNull final ByteBuffer from) {
