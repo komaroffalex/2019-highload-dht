@@ -41,6 +41,10 @@ public class TimestampRecord {
         this.value = value;
     }
 
+    public static TimestampRecord getEmpty() {
+        return new TimestampRecord(-1, null, RecordType.ABSENT);
+    }
+
     public static TimestampRecord fromBytes(@Nullable final byte[] bytes) {
         if (bytes == null) {
             return new TimestampRecord(-1, null, RecordType.ABSENT);
@@ -88,6 +92,10 @@ public class TimestampRecord {
 
     public boolean isEmpty() {
         return recordType == RecordType.ABSENT;
+    }
+
+    public boolean isDeleted() {
+        return recordType == RecordType.DELETED;
     }
 
     public ByteBuffer getValue() throws DAOException {

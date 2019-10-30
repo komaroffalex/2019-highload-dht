@@ -37,4 +37,14 @@ public class ClusterNodes {
     public String getId() {
         return this.id;
     }
+
+    public String[] replicas(final int count, @NotNull final ByteBuffer key) {
+        final String[] res = new String[count];
+        int index = (key.hashCode() & Integer.MAX_VALUE) % nodes.size();
+        for (int j = 0; j < count; j++) {
+            res[j] = nodes.get(index);
+            index = (index + 1) % nodes.size();
+        }
+        return res;
+    }
 }

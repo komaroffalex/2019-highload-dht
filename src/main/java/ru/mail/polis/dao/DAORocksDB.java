@@ -124,14 +124,12 @@ public final class DAORocksDB implements DAO {
 
     @NotNull
     public TimestampRecord getRecordWithTimestamp(@NotNull final ByteBuffer keys) throws IOException, NoSuchElementException {
-        synchronized (objLock) {
-            try {
-                final byte[] packedKey = decompressKey(keys);
-                final byte[] valueByteArray = mdb.get(packedKey);
-                return TimestampRecord.fromBytes(valueByteArray);
-            } catch (RocksDBException exception) {
-                throw new DAOException("Error while get", exception);
-            }
+        try {
+            final byte[] packedKey = decompressKey(keys);
+            final byte[] valueByteArray = mdb.get(packedKey);
+            return TimestampRecord.fromBytes(valueByteArray);
+        } catch (RocksDBException exception) {
+            throw new DAOException("Error while get", exception);
         }
     }
 
@@ -150,15 +148,13 @@ public final class DAORocksDB implements DAO {
 
     public void upsertRecordWithTimestamp(@NotNull final ByteBuffer keys,
                                           @NotNull final ByteBuffer values) throws IOException {
-        synchronized (objLock) {
-            try {
-                final var record = TimestampRecord.fromValue(values, System.currentTimeMillis());
-                final byte[] packedKey = decompressKey(keys);
-                final byte[] arrayValue = record.toBytes();
-                mdb.put(wOptions, packedKey, arrayValue);
-            } catch (RocksDBException e) {
-                throw new DAOException("Upsert method exception!", e);
-            }
+        try {
+            final var record = TimestampRecord.fromValue(values, System.currentTimeMillis());
+            final byte[] packedKey = decompressKey(keys);
+            final byte[] arrayValue = record.toBytes();
+            mdb.put(wOptions, packedKey, arrayValue);
+        } catch (RocksDBException e) {
+            throw new DAOException("Upsert method exception!", e);
         }
     }
 
