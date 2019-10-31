@@ -1,7 +1,6 @@
 package ru.mail.polis.service;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.google.common.base.Splitter;
 import one.nio.http.HttpServer;
 import one.nio.http.HttpServerConfig;
 import one.nio.http.HttpSession;
@@ -23,13 +22,14 @@ import ru.mail.polis.service.cluster.RF;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.Map;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+import java.util.HashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
-import static one.nio.http.Response.*;
 
 public class AsyncHttpService extends HttpServer implements Service {
     @NotNull
@@ -109,12 +109,12 @@ public class AsyncHttpService extends HttpServer implements Service {
 
     private void entity(@NotNull final Request request, final HttpSession session) throws IOException {
         if (request.getURI().equals("/v0/entity")) {
-            session.sendError(BAD_REQUEST, "No specified parameters");
+            session.sendError(Response.BAD_REQUEST, "No specified parameters");
             return;
         }
         final String id = request.getParameter("id=");
         if (id.isEmpty()) {
-            session.sendError(BAD_REQUEST, "Id is not specified");
+            session.sendError(Response.BAD_REQUEST, "Id is not specified");
             return;
         }
         boolean proxied = false;
@@ -128,8 +128,8 @@ public class AsyncHttpService extends HttpServer implements Service {
         final boolean proxiedF = proxied;
 
         if (proxied || nodes.getNodes().size() > 1) {
-            Coordinators clusterCoordinator = new Coordinators(nodes, clusterClients, dao, proxiedF);
-            String[] replicaClusters = proxied ? new String[]{nodes.getId()} : nodes.replicas(rf.getFrom(), key);
+            final Coordinators clusterCoordinator = new Coordinators(nodes, clusterClients, dao, proxiedF);
+            final String[] replicaClusters = proxied ? new String[]{nodes.getId()} : nodes.replicas(rf.getFrom(), key);
             clusterCoordinator.coordinateRequest(replicaClusters, request, rf.getAck(), session);
         } else {
             executeAsyncRequest(request, key, session);
@@ -149,7 +149,7 @@ public class AsyncHttpService extends HttpServer implements Service {
                 executeAsync(session, () -> deleteMethodWrapper(key));
                 return;
             default:
-                session.sendError(METHOD_NOT_ALLOWED, "Wrong method");
+                session.sendError(Response.METHOD_NOT_ALLOWED, "Wrong method");
                 return;
         }
     }
@@ -164,7 +164,7 @@ public class AsyncHttpService extends HttpServer implements Service {
                 entities(request, session);
                 break;
             default:
-                session.sendError(BAD_REQUEST, "Wrong path");
+                session.sendError(Response.BAD_REQUEST, "Wrong path");
                 break;
         }
     }
@@ -175,7 +175,7 @@ public class AsyncHttpService extends HttpServer implements Service {
                 session.sendResponse(action.act());
             } catch (IOException e) {
                 try {
-                    session.sendError(INTERNAL_ERROR, e.getMessage());
+                    session.sendError(Response.INTERNAL_ERROR, e.getMessage());
                 } catch (IOException ex) {
                     logger.log(Level.SEVERE,"Exception while processing request: ", e);
                 }
@@ -191,12 +191,12 @@ public class AsyncHttpService extends HttpServer implements Service {
     private void entities(@NotNull final Request request, @NotNull final HttpSession session) throws IOException {
         final String start = request.getParameter("start=");
         if (start == null || start.isEmpty()) {
-            session.sendError(BAD_REQUEST, "No start");
+            session.sendError(Response.BAD_REQUEST, "No start");
             return;
         }
 
         if (request.getMethod() != Request.METHOD_GET) {
-            session.sendError(METHOD_NOT_ALLOWED, "Wrong method");
+            session.sendError(Response.METHOD_NOT_ALLOWED, "Wrong method");
             return;
         }
 
@@ -211,7 +211,7 @@ public class AsyncHttpService extends HttpServer implements Service {
                             end == null ? null : ByteBuffer.wrap(end.getBytes(StandardCharsets.UTF_8)));
             ((StreamStorageSession) session).stream(records);
         } catch (IOException e) {
-            session.sendError(INTERNAL_ERROR, e.getMessage());
+            session.sendError(Response.INTERNAL_ERROR, e.getMessage());
         }
     }
 

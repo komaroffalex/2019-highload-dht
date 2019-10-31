@@ -38,6 +38,13 @@ public class ClusterNodes {
         return this.id;
     }
 
+    /**
+     * Get the clusters ids where the replicas will be created.
+     *
+     * @param count the amount of replicas
+     * @param count key id
+     * @return ids of the clusters to create replicas
+     */
     public String[] replicas(final int count, @NotNull final ByteBuffer key) {
         final String[] res = new String[count];
         int index = (key.hashCode() & Integer.MAX_VALUE) % nodes.size();

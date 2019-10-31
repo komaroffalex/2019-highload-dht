@@ -20,7 +20,7 @@ public class RF {
 
     @NotNull
     private static RF of(@NotNull final String value) {
-        String rem = value.replace("=", "");
+        final String rem = value.replace("=", "");
         final List<String> values = Splitter.on('/').splitToList(rem);
         if (values.size() != 2) {
             throw new IllegalArgumentException("Wrong replica factor:" + value);
@@ -28,6 +28,15 @@ public class RF {
         return new RF(Integer.parseInt(values.get(0)), Integer.parseInt(values.get(1)));
     }
 
+    /**
+     * Calculate the RF value.
+     *
+     * @param replicas to define the amount of replicas needed
+     * @param session to output responses
+     * @param defaultRF to specify the default RF
+     * @param clusterSize to specify the size of cluster
+     * @return RF value
+     */
     public static RF calculateRF(final String replicas, @NotNull final HttpSession session,
                                  final RF defaultRF, final int clusterSize) throws IOException {
         RF rf = null;

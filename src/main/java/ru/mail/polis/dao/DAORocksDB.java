@@ -89,8 +89,15 @@ public final class DAORocksDB implements DAO {
         }
     }
 
+    /**
+     * Get record from DB.
+     *
+     * @param keys to define key
+     * @return record
+     */
     @NotNull
-    public TimestampRecord getRecordWithTimestamp(@NotNull final ByteBuffer keys) throws IOException, NoSuchElementException {
+    public TimestampRecord getRecordWithTimestamp(@NotNull final ByteBuffer keys)
+            throws IOException, NoSuchElementException {
         try {
             final byte[] packedKey = decompressKey(keys);
             final byte[] valueByteArray = mdb.get(packedKey);
@@ -113,6 +120,12 @@ public final class DAORocksDB implements DAO {
         }
     }
 
+    /**
+     * Put record into DB.
+     *
+     * @param keys to define key
+     * @param values to define value
+     */
     public void upsertRecordWithTimestamp(@NotNull final ByteBuffer keys,
                                           @NotNull final ByteBuffer values) throws IOException {
         try {
@@ -135,6 +148,11 @@ public final class DAORocksDB implements DAO {
         }
     }
 
+    /**
+     * Delete record from DB.
+     *
+     * @param key to define key
+     */
     public void removeRecordWithTimestamp(@NotNull final ByteBuffer key) throws IOException {
         try {
             final byte[] packedKey = decompressKey(key);
