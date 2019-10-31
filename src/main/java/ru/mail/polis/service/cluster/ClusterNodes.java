@@ -42,7 +42,7 @@ public class ClusterNodes {
      * Get the clusters ids where the replicas will be created.
      *
      * @param count the amount of replicas
-     * @param count key id
+     * @param key key id
      * @return ids of the clusters to create replicas
      */
     public String[] replicas(final int count, @NotNull final ByteBuffer key) {

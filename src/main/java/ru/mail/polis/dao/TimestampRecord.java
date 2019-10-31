@@ -131,6 +131,11 @@ public class TimestampRecord {
         return value;
     }
 
+    /**
+     * Get the value only as bytes.
+     *
+     * @return value of the timestamp instance as bytes
+     */
     public byte[] getValueAsBytes() throws DAOException {
         final var val = getValue().duplicate();
         final byte[] ret = new byte[val.remaining()];
