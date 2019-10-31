@@ -5,6 +5,8 @@ import org.jetbrains.annotations.Nullable;
 import org.rocksdb.RocksDBException;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Comparator;
 
 public class TimestampRecord {
 
@@ -103,5 +105,15 @@ public class TimestampRecord {
             throw new DAOException("Empty record has no value", new RocksDBException("Failed to get value from TimestampRecord!"));
         }
         return value;
+    }
+
+    public static TimestampRecord merge(final ArrayList<TimestampRecord> responses) {
+        if (responses.size() == 1) return responses.get(0);
+        else {
+            return responses.stream()
+                    .filter(timestampRecord -> !timestampRecord.isEmpty())
+                    .max(Comparator.comparingLong(TimestampRecord::getTimestamp))
+                    .orElseGet(TimestampRecord::getEmpty);
+        }
     }
 }
