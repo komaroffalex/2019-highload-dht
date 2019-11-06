@@ -34,6 +34,16 @@ public class ClusterNodes {
         return new HashSet<>(this.nodes);
     }
 
+    public Set<Integer> getPorts() {
+        Set<String> res = getNodes();
+        Set<Integer> ret = new HashSet<>();
+        for (String it : res) {
+            it = it.replaceAll("\\D+","");
+            ret.add(Integer.parseInt(it));
+        }
+        return ret;
+    }
+
     public String getId() {
         return this.id;
     }

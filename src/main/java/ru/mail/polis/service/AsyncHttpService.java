@@ -7,7 +7,7 @@ import one.nio.http.HttpSession;
 import one.nio.http.Path;
 import one.nio.http.Response;
 import one.nio.http.Request;
-import one.nio.http.HttpClient;
+//import one.nio.http.HttpClient;
 import one.nio.net.Socket;
 import one.nio.net.ConnectionString;
 import one.nio.server.AcceptorConfig;
@@ -19,6 +19,12 @@ import ru.mail.polis.service.cluster.ClusterNodes;
 import ru.mail.polis.service.cluster.Coordinators;
 import ru.mail.polis.service.cluster.RF;
 
+import java.net.http.HttpClient;
+import java.net.http.HttpClient.Version;
+import java.net.http.HttpClient.Redirect;
+import java.net.InetSocketAddress;
+import java.net.ProxySelector;
+import java.net.Authenticator;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -43,7 +49,6 @@ public class AsyncHttpService extends HttpServer implements Service {
 
     private static final Logger logger = Logger.getLogger(AsyncHttpService.class.getName());
 
-    private static final String PROXY_HEADER = "X-OK-Proxy: True";
     private final RF defaultRF;
 
     /**
@@ -84,9 +89,15 @@ public class AsyncHttpService extends HttpServer implements Service {
         config.maxWorkers = Runtime.getRuntime().availableProcessors();
         config.queueTime = 10; // ms
         final Map<String, HttpClient> clusterClients = new HashMap<>();
-        for (final String it : nodes.getNodes()) {
-            if (!nodes.getId().equals(it) && !clusterClients.containsKey(it)) {
-                clusterClients.put(it, new HttpClient(new ConnectionString(it + "?timeout=100")));
+        for (final Integer it : nodes.getPorts()) {
+            if (!nodes.getId().equals("http://localhost:" + it) && !clusterClients.containsKey("http://localhost:" + it)) {
+                HttpClient client = HttpClient.newBuilder()
+                        .version(Version.HTTP_2)
+                        .followRedirects(Redirect.NEVER)
+                        //.proxy(ProxySelector.of(new InetSocketAddress("http://localhost:", it)))
+                        //.authenticator(Authenticator.getDefault())
+                        .build();
+                clusterClients.put("http://localhost:" + it, client);
             }
         }
         return new AsyncHttpService(config, dao, nodes, clusterClients);
@@ -118,7 +129,7 @@ public class AsyncHttpService extends HttpServer implements Service {
             return;
         }
         boolean proxied = false;
-        if (request.getHeader(PROXY_HEADER) != null) {
+        if (request.getHeader("PROXY_HEADER") != null) {
             proxied = true;
         }
 
