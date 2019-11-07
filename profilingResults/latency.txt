@@ -1,0 +1,36 @@
+alex@alex-Lenovo-G780:~/highload_async/2019-highload-dht/luaScript$ wrk -c50 -d60s -R1000 -s put.lua --latency http://localhost:8080
+Running 1m test @ http://localhost:8080
+  2 threads and 50 connections
+  Thread calibration: mean lat.: 57.626ms, rate sampling interval: 616ms
+  Thread calibration: mean lat.: 58.204ms, rate sampling interval: 614ms
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     1.94ms  688.31us  12.37ms   72.61%
+    Req/Sec   499.98      2.65   506.00     73.91%
+  Latency Distribution (HdrHistogram - Recorded Latency)
+ 50.000%    1.92ms
+ 75.000%    2.33ms
+ 90.000%    2.72ms
+ 99.000%    3.67ms
+ 99.900%    6.61ms
+ 99.990%   11.14ms
+ 99.999%   12.38ms
+100.000%   12.38ms
+
+alex@alex-Lenovo-G780:~/highload_async/2019-highload-dht/luaScript$ wrk -c50 -d60s -R1000 -s get.lua --latency http://localhost:8080
+Running 1m test @ http://localhost:8080
+  2 threads and 50 connections
+  Thread calibration: mean lat.: 5.597ms, rate sampling interval: 16ms
+  Thread calibration: mean lat.: 1.979ms, rate sampling interval: 10ms
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     4.53ms    2.82ms  13.46ms   53.76%
+    Req/Sec   522.08    469.18     1.67k    61.90%
+  Latency Distribution (HdrHistogram - Recorded Latency)
+ 50.000%    4.72ms
+ 75.000%    7.11ms
+ 90.000%    7.98ms
+ 99.000%    9.70ms
+ 99.900%   11.52ms
+ 99.990%   12.90ms
+ 99.999%   13.46ms
+100.000%   13.46ms
+
