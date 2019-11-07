@@ -1,11 +1,8 @@
 package ru.mail.polis.service.cluster;
 
-//import one.nio.http.HttpClient;
 import one.nio.http.Request;
 import one.nio.http.Response;
-import one.nio.http.HttpException;
 import one.nio.http.HttpSession;
-import one.nio.pool.PoolException;
 import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.dao.DAO;
 import ru.mail.polis.dao.DAORocksDB;
@@ -23,7 +20,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.ArrayList;
 import java.util.Map;
@@ -43,7 +39,6 @@ public class Coordinators {
 
     private static final Logger logger = Logger.getLogger(Coordinators.class.getName());
     private static final String PROXY_HEADER = "X-OK-Proxy: True";
-    private static final String ENTITY_HEADER = "/v0/entity?id=";
 
     /**
      * Create the cluster coordinator instance.
@@ -67,33 +62,20 @@ public class Coordinators {
      * @param replicaNodes to define the nodes where to create replicas
      * @param rqst to define request
      * @param acks to specify the amount of acks needed
-     * @param proxied to specify if the request is sent by proxying
-     * @return Response value
+     * @param session to specify if the session for output
      */
-    public void coordinateDelete(final String[] replicaNodes, final Request rqst,
-                                     final int acks, final boolean proxied,
-                                     final HttpSession session) throws IOException {
-        final String id = rqst.getParameter("id=");
-        final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
+    private void coordinateDelete(final String[] replicaNodes, final Request rqst,
+                                     final int acks, final HttpSession session) throws IOException {
         AtomicInteger asks = new AtomicInteger(0);
         List<CompletableFuture<HttpResponse<byte[]>>> futures = new ArrayList<>();
         for (final String node : replicaNodes) {
             try {
                 if (node.equals(nodes.getId())) {
-                    deleteWithTimestampMethodWrapper(key);
+                    deleteWithTimestampMethodWrapper(parseKey(rqst));
                     asks.incrementAndGet();
                 } else {
-                    HttpRequest request = HttpRequest.newBuilder()
-                            .DELETE()
-                            .uri(URI.create(node + rqst.getURI()))
-                            .timeout(Duration.of(10, SECONDS))
-                            .setHeader("PROXY_HEADER", PROXY_HEADER)
-                            .build();
+                    HttpRequest request = requestBase(node, rqst).DELETE().build();
                     CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node).sendAsync(request, BodyHandlers.ofByteArray());
-                    futureResp.exceptionally(except->{
-                        logger.log(Level.SEVERE, "Exception while deleting by proxy: ", except);
-                        return null;
-                    });
                     futures.add(futureResp);
                 }
             } catch (IOException e) {
@@ -107,41 +89,21 @@ public class Coordinators {
         }
         all.thenAccept((response)->{
             try {
-                for(var futureTask : futures){
-                    if (futureTask.get().statusCode() == 202) {
-                        asks.incrementAndGet();
-                    }
-                }
-                if (asks.get() >= acks || proxied) {
-                    session.sendResponse(new Response(Response.ACCEPTED, Response.EMPTY));
-                } else {
-                    session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
-                }
-            } catch (IOException | ExecutionException | InterruptedException e) {
+                session.sendResponse(postProcessDeleteFutures(asks, futures, acks));
+            } catch (IOException e) {
                 logger.log(Level.SEVERE, "Exception while deleting by proxy: ", e);
             }
         });
         all.exceptionally(except -> {
             logger.log(Level.SEVERE, "Exception while deleting by proxy: ", except);
-            for(var futureTask : futures){
-                try {
-                    if (futureTask.get().statusCode() == 202) {
-                        asks.incrementAndGet();
-                    }
-                } catch (ExecutionException | InterruptedException e) {
-                    logger.log(Level.SEVERE, "Exception while deleting by proxy: ", e);
-                }
-            }
             try {
-                if (asks.get() >= acks) session.sendResponse(new Response(Response.ACCEPTED, Response.EMPTY));
-                else session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
+                session.sendResponse(postProcessDeleteFutures(asks, futures, acks));
             } catch (IOException e) {
-                logger.log(Level.SEVERE, "Exception while deleting by proxy: ", e);
+                logger.log(Level.INFO, "Exception while deleting by proxy: ", e);
             }
             return null;
         });
     }
-
 
     /**
      * Coordinate the put among all clusters.
@@ -149,33 +111,22 @@ public class Coordinators {
      * @param replicaNodes to define the nodes where to create replicas
      * @param rqst to define request
      * @param acks to specify the amount of acks needed
-     * @param proxied to specify if the request is sent by proxying
-     * @return Response value
+     * @param session to specify if the session for output
      */
-    public void coordinatePut(final String[] replicaNodes, final Request rqst,
-                                  final int acks, final boolean proxied,
-                                  final HttpSession session) throws IOException {
-        final String id = rqst.getParameter("id=");
-        final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
+    private void coordinatePut(final String[] replicaNodes, final Request rqst,
+                                  final int acks, final HttpSession session) throws IOException {
         AtomicInteger asks = new AtomicInteger(0);
         List<CompletableFuture<HttpResponse<byte[]>>> futures = new ArrayList<>();
         for (final String node : replicaNodes) {
             try {
                 if (node.equals(nodes.getId())) {
-                    putWithTimestampMethodWrapper(key, rqst);
+                    putWithTimestampMethodWrapper(parseKey(rqst), rqst);
                     asks.incrementAndGet();
                 } else {
-                    HttpRequest request = HttpRequest.newBuilder()
+                    HttpRequest request = requestBase(node, rqst)
                             .PUT(HttpRequest.BodyPublishers.ofByteArray(rqst.getBody()))
-                            .uri(URI.create(node + rqst.getURI()))
-                            .timeout(Duration.of(10, SECONDS))
-                            .setHeader("PROXY_HEADER", PROXY_HEADER)
                             .build();
                     CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node).sendAsync(request, BodyHandlers.ofByteArray());
-                    futureResp.exceptionally(except->{
-                        logger.log(Level.SEVERE, "Exception while putting by proxy: ", except);
-                        return null;
-                    });
                     futures.add(futureResp);
                 }
             } catch (IOException e) {
@@ -183,42 +134,23 @@ public class Coordinators {
             }
         }
         CompletableFuture<Void> all = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
-        if (futures.size()==0) {
+        if (futures.size() == 0) {
             session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
             return;
         }
-        all.thenAccept((response)->{
+        all.thenAccept((response) -> {
             try {
-                for(var futureTask : futures){
-                    if (futureTask.get().statusCode() == 201) {
-                        asks.incrementAndGet();
-                    }
-                }
-                if (asks.get() >= acks || proxied) {
-                    session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
-                } else {
-                    session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
-                }
-            } catch (IOException | ExecutionException | InterruptedException e) {
+                session.sendResponse(postProcessPutFutures(asks, futures, acks));
+            } catch (IOException e) {
                 logger.log(Level.SEVERE, "Exception while putting by proxy: ", e);
             }
         });
         all.exceptionally(except -> {
             logger.log(Level.SEVERE, "Exception while putting by proxy: ", except);
-            for(var futureTask : futures){
-                try {
-                    if (futureTask.get().statusCode() == 201) {
-                        asks.incrementAndGet();
-                    }
-                } catch (ExecutionException | InterruptedException e) {
-                    logger.log(Level.SEVERE, "Exception while putting by proxy: ", e);
-                }
-            }
             try {
-                if (asks.get() >= acks) session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
-                else session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
+                session.sendResponse(postProcessPutFutures(asks, futures, acks));
             } catch (IOException e) {
-                logger.log(Level.SEVERE, "Exception while putting by proxy: ", e);
+                logger.log(Level.INFO, "Exception while putting by proxy: ", e);
             }
             return null;
         });
@@ -230,20 +162,16 @@ public class Coordinators {
      * @param replicaNodes to define the nodes where to create replicas
      * @param rqst to define request
      * @param acks to specify the amount of acks needed
-     * @param proxied to specify if the request is sent by proxying
-     * @return Response value
+     * @param session to specify if the session for output
      */
-    public void coordinateGet(final String[] replicaNodes, final Request rqst,
-                              final int acks, final boolean proxied,
-                              final HttpSession session) throws IOException {
-        final String id = rqst.getParameter("id=");
-        final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
+    private void coordinateGet(final String[] replicaNodes, final Request rqst,
+                              final int acks, final HttpSession session) throws IOException {
         AtomicInteger asks = new AtomicInteger(0);
         List<CompletableFuture<HttpResponse<byte[]>>> futures = new ArrayList<>();
         final List<TimestampRecord> responses = new ArrayList<>();
         for (final String node : replicaNodes) {
             if (node.equals(nodes.getId())) {
-                Response resp = getWithTimestampMethodWrapper(key);
+                Response resp = getWithTimestampMethodWrapper(parseKey(rqst));
                 if (resp.getBody().length != 0) {
                     responses.add(TimestampRecord.fromBytes(resp.getBody()));
                 } else {
@@ -251,63 +179,29 @@ public class Coordinators {
                 }
                 asks.incrementAndGet();
             } else {
-                HttpRequest request = HttpRequest.newBuilder()
-                        .GET()
-                        .uri(URI.create(node + rqst.getURI()))
-                        .timeout(Duration.of(5, SECONDS))
-                        .setHeader("PROXY_HEADER", PROXY_HEADER)
-                        .build();
+                HttpRequest request = requestBase(node, rqst).GET().build();
                 CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node).sendAsync(request, BodyHandlers.ofByteArray());
-                futureResp.exceptionally(except -> {
-                    logger.log(Level.SEVERE, "Exception while getting by proxy: ", except);
-                    return null;
-                });
                 futures.add(futureResp);
             }
         }
-        CompletableFuture<Void> all = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
-        if (futures.size()==0) {
+        if (futures.size() == 0) {
             session.sendResponse(processResponses(replicaNodes, responses));
             return;
         }
-        all.thenAccept((response)->{
+        final CompletableFuture<Void> all = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+        all.thenAccept((response) -> {
             try {
-                for (var futureTask : futures){
-                    if (futureTask.get().statusCode() == 404 && futureTask.get().body().length == 0) {
-                        responses.add(TimestampRecord.getEmpty());
-                    } else if (futureTask.get().statusCode() != 500) {
-                        responses.add(TimestampRecord.fromBytes(futureTask.get().body()));
-                    }
-                    asks.incrementAndGet();
-                }
-                if (asks.get() >= acks || proxied) {
-                    session.sendResponse(processResponses(replicaNodes, responses));
-                } else {
-                    session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
-                }
-            } catch (IOException | ExecutionException | InterruptedException e) {
+                session.sendResponse(postProcessGetFutures(responses, asks, futures, replicaNodes, acks));
+            } catch (IOException e) {
                 logger.log(Level.SEVERE, "Exception while getting by proxy: ", e);
             }
         });
         all.exceptionally(except -> {
             logger.log(Level.SEVERE, "Exception while getting by proxy: ", except);
             try {
-                for (var futureTask : futures) {
-                    if (futureTask.get().statusCode() == 404 && futureTask.get().body().length == 0) {
-                        responses.add(TimestampRecord.getEmpty());
-                    } else if (futureTask.get().statusCode() != 500) {
-                        responses.add(TimestampRecord.fromBytes(futureTask.get().body()));
-                    }
-                    asks.incrementAndGet();
-                }
-            } catch (ExecutionException | InterruptedException e) {
-                logger.log(Level.SEVERE, "Exception while getting by proxy: ", e);
-            }
-            try {
-                if (asks.get() >= acks) session.sendResponse(processResponses(replicaNodes, responses));
-                else session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
+                session.sendResponse(postProcessGetFutures(responses, asks, futures, replicaNodes, acks));
             } catch (IOException e) {
-                logger.log(Level.SEVERE, "Exception while getting by proxy: ", e);
+                logger.log(Level.INFO, "Exception while getting by proxy: ", e);
             }
             return null;
         });
@@ -329,6 +223,76 @@ public class Coordinators {
         } else {
             return new Response(Response.NOT_FOUND, Response.EMPTY);
         }
+    }
+
+    private Response postProcessDeleteFutures(AtomicInteger asks, List<CompletableFuture<HttpResponse<byte[]>>> futures,
+                                           final int acks) {
+        for (var futureTask : futures) {
+            try {
+                if (futureTask.get().statusCode() == 202) {
+                    asks.incrementAndGet();
+                }
+            } catch (ExecutionException | InterruptedException e) {
+                logger.log(Level.SEVERE, "Exception while deleting by proxy: ", e);
+            }
+        }
+        if (asks.get() >= acks) {
+            return new Response(Response.ACCEPTED, Response.EMPTY);
+        } else {
+            return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
+        }
+    }
+
+    private Response postProcessPutFutures(AtomicInteger asks, List<CompletableFuture<HttpResponse<byte[]>>> futures,
+                                           final int acks) {
+        for (var futureTask : futures) {
+            try {
+                if (futureTask.get().statusCode() == 201) {
+                    asks.incrementAndGet();
+                }
+            } catch (ExecutionException | InterruptedException e) {
+                logger.log(Level.SEVERE, "Exception while putting by proxy: ", e);
+            }
+        }
+        if (asks.get() >= acks) {
+            return new Response(Response.CREATED, Response.EMPTY);
+        } else {
+            return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
+        }
+    }
+
+    private Response postProcessGetFutures(List<TimestampRecord> responses, AtomicInteger asks,
+                                       List<CompletableFuture<HttpResponse<byte[]>>> futures,
+                                       final String[] replicaNodes, final int acks) throws IOException {
+        for (var futureTask : futures) {
+            try {
+                if (futureTask.get().statusCode() == 404 && futureTask.get().body().length == 0) {
+                    responses.add(TimestampRecord.getEmpty());
+                } else if (futureTask.get().statusCode() != 500) {
+                    responses.add(TimestampRecord.fromBytes(futureTask.get().body()));
+                }
+                asks.incrementAndGet();
+            } catch (ExecutionException | InterruptedException e) {
+                logger.log(Level.SEVERE, "Exception while getting by proxy: ", e);
+            }
+        }
+        if (asks.get() >= acks) {
+            return processResponses(replicaNodes, responses);
+        } else {
+            return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
+        }
+    }
+
+    private ByteBuffer parseKey(final Request rqst) {
+        final String id = rqst.getParameter("id=");
+        return ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private HttpRequest.Builder requestBase(String node, Request rqst) {
+        return HttpRequest.newBuilder()
+                .uri(URI.create(node + rqst.getURI()))
+                .timeout(Duration.of(5, SECONDS))
+                .setHeader("PROXY_HEADER", PROXY_HEADER);
     }
 
     private void putWithTimestampMethodWrapper(final ByteBuffer key, final Request request) throws IOException {
@@ -370,13 +334,13 @@ public class Coordinators {
         try {
             switch (request.getMethod()) {
                 case Request.METHOD_GET:
-                    coordinateGet(replicaClusters, request, acks, proxied, session);
+                    coordinateGet(replicaClusters, request, acks, session);
                     return;
                 case Request.METHOD_PUT:
-                    coordinatePut(replicaClusters, request, acks, proxied, session);
+                    coordinatePut(replicaClusters, request, acks, session);
                     return;
                 case Request.METHOD_DELETE:
-                    coordinateDelete(replicaClusters, request, acks, proxied, session);
+                    coordinateDelete(replicaClusters, request, acks, session);
                     return;
                 default:
                     session.sendError(Response.METHOD_NOT_ALLOWED, "Wrong method");
