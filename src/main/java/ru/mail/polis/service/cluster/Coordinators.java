@@ -63,8 +63,8 @@ public class Coordinators {
                     asks.incrementAndGet();
                 } else {
                     final HttpRequest request = RequestUtils.requestBase(node, rqst).DELETE().build();
-                    final CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node).
-                            sendAsync(request, BodyHandlers.ofByteArray());
+                    final CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node)
+                            .sendAsync(request, BodyHandlers.ofByteArray());
                     futures.add(futureResp);
                 }
             } catch (IOException e) {
@@ -114,8 +114,8 @@ public class Coordinators {
                     final HttpRequest request = RequestUtils.requestBase(node, rqst)
                             .PUT(HttpRequest.BodyPublishers.ofByteArray(rqst.getBody()))
                             .build();
-                    final CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node).
-                            sendAsync(request, BodyHandlers.ofByteArray());
+                    final CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node)
+                            .sendAsync(request, BodyHandlers.ofByteArray());
                     futures.add(futureResp);
                 }
             } catch (IOException e) {
@@ -168,8 +168,8 @@ public class Coordinators {
                 asks.incrementAndGet();
             } else {
                 final HttpRequest request = RequestUtils.requestBase(node, rqst).GET().build();
-                final CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node).
-                        sendAsync(request, BodyHandlers.ofByteArray());
+                final CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node)
+                        .sendAsync(request, BodyHandlers.ofByteArray());
                 futures.add(futureResp);
             }
         }
