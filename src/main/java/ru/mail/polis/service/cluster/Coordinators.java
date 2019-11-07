@@ -54,7 +54,7 @@ public class Coordinators {
      */
     private void coordinateDelete(final String[] replicaNodes, final Request rqst,
                                      final int acks, final HttpSession session) throws IOException {
-        AtomicInteger asks = new AtomicInteger(0);
+        final AtomicInteger asks = new AtomicInteger(0);
         final List<CompletableFuture<HttpResponse<byte[]>>> futures = new ArrayList<>();
         for (final String node : replicaNodes) {
             try {
@@ -62,32 +62,32 @@ public class Coordinators {
                     utils.deleteWithTimestampMethodWrapper(RequestUtils.parseKey(rqst));
                     asks.incrementAndGet();
                 } else {
-                    HttpRequest request = RequestUtils.requestBase(node, rqst).DELETE().build();
-                    CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node).sendAsync(request, BodyHandlers.ofByteArray());
+                    final HttpRequest request = RequestUtils.requestBase(node, rqst).DELETE().build();
+                    final CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node).
+                            sendAsync(request, BodyHandlers.ofByteArray());
                     futures.add(futureResp);
                 }
             } catch (IOException e) {
-                logger.log(Level.SEVERE, "Exception while deleting by proxy: ", e);
+                logger.log(Level.SEVERE, "Exception while coordinating delete: ", e);
             }
         }
-        final CompletableFuture<Void> all = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
-        if (futures.size()==0) {
+        if (futures.isEmpty()) {
             session.sendResponse(new Response(Response.ACCEPTED, Response.EMPTY));
             return;
         }
-        all.thenAccept((response)->{
+        var all = CompletableFuture.allOf(futures.toArray(new CompletableFuture<?>[0]));
+        all = all.thenAccept((response)->{
             try {
                 session.sendResponse(utils.postProcessDeleteFutures(asks, futures, acks));
             } catch (IOException e) {
-                logger.log(Level.SEVERE, "Exception while deleting by proxy: ", e);
+                logger.log(Level.SEVERE, "Exception while processing delete: ", e);
             }
         });
         all.exceptionally(except -> {
-            logger.log(Level.SEVERE, "Exception while deleting by proxy: ", except);
             try {
                 session.sendResponse(utils.postProcessDeleteFutures(asks, futures, acks));
             } catch (IOException e) {
-                logger.log(Level.INFO, "Exception while deleting by proxy: ", e);
+                logger.log(Level.INFO, "Exception while processing excepted delete: ", e);
             }
             return null;
         });
@@ -103,7 +103,7 @@ public class Coordinators {
      */
     private void coordinatePut(final String[] replicaNodes, final Request rqst,
                                   final int acks, final HttpSession session) throws IOException {
-        AtomicInteger asks = new AtomicInteger(0);
+        final AtomicInteger asks = new AtomicInteger(0);
         final List<CompletableFuture<HttpResponse<byte[]>>> futures = new ArrayList<>();
         for (final String node : replicaNodes) {
             try {
@@ -111,34 +111,34 @@ public class Coordinators {
                     utils.putWithTimestampMethodWrapper(RequestUtils.parseKey(rqst), rqst);
                     asks.incrementAndGet();
                 } else {
-                    HttpRequest request = RequestUtils.requestBase(node, rqst)
+                    final HttpRequest request = RequestUtils.requestBase(node, rqst)
                             .PUT(HttpRequest.BodyPublishers.ofByteArray(rqst.getBody()))
                             .build();
-                    CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node).sendAsync(request, BodyHandlers.ofByteArray());
+                    final CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node).
+                            sendAsync(request, BodyHandlers.ofByteArray());
                     futures.add(futureResp);
                 }
             } catch (IOException e) {
-                logger.log(Level.SEVERE, "Exception while putting!", e);
+                logger.log(Level.SEVERE, "Exception while coordinating put: ", e);
             }
         }
-        final CompletableFuture<Void> all = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
-        if (futures.size() == 0) {
+        if (futures.isEmpty()) {
             session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
             return;
         }
-        all.thenAccept((response) -> {
+        var all = CompletableFuture.allOf(futures.toArray(new CompletableFuture<?>[0]));
+        all = all.thenAccept((response) -> {
             try {
                 session.sendResponse(utils.postProcessPutFutures(asks, futures, acks));
             } catch (IOException e) {
-                logger.log(Level.SEVERE, "Exception while putting by proxy: ", e);
+                logger.log(Level.SEVERE, "Exception while processing put: ", e);
             }
         });
         all.exceptionally(except -> {
-            logger.log(Level.SEVERE, "Exception while putting by proxy: ", except);
             try {
                 session.sendResponse(utils.postProcessPutFutures(asks, futures, acks));
             } catch (IOException e) {
-                logger.log(Level.INFO, "Exception while putting by proxy: ", e);
+                logger.log(Level.INFO, "Exception while processing excepted put: ", e);
             }
             return null;
         });
@@ -154,42 +154,42 @@ public class Coordinators {
      */
     private void coordinateGet(final String[] replicaNodes, final Request rqst,
                               final int acks, final HttpSession session) throws IOException {
-        AtomicInteger asks = new AtomicInteger(0);
+        final AtomicInteger asks = new AtomicInteger(0);
         final List<CompletableFuture<HttpResponse<byte[]>>> futures = new ArrayList<>();
         final List<TimestampRecord> responses = new ArrayList<>();
         for (final String node : replicaNodes) {
             if (node.equals(nodes.getId())) {
-                Response resp = utils.getWithTimestampMethodWrapper(RequestUtils.parseKey(rqst));
-                if (resp.getBody().length != 0) {
-                    responses.add(TimestampRecord.fromBytes(resp.getBody()));
-                } else {
+                final Response resp = utils.getWithTimestampMethodWrapper(RequestUtils.parseKey(rqst));
+                if (resp.getBody().length == 0) {
                     responses.add(TimestampRecord.getEmpty());
+                } else {
+                    responses.add(TimestampRecord.fromBytes(resp.getBody()));
                 }
                 asks.incrementAndGet();
             } else {
-                HttpRequest request = RequestUtils.requestBase(node, rqst).GET().build();
-                CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node).sendAsync(request, BodyHandlers.ofByteArray());
+                final HttpRequest request = RequestUtils.requestBase(node, rqst).GET().build();
+                final CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node).
+                        sendAsync(request, BodyHandlers.ofByteArray());
                 futures.add(futureResp);
             }
         }
-        if (futures.size() == 0) {
+        if (futures.isEmpty()) {
             session.sendResponse(utils.processResponses(replicaNodes, responses));
             return;
         }
-        final CompletableFuture<Void> all = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
-        all.thenAccept((response) -> {
+        var all = CompletableFuture.allOf(futures.toArray(new CompletableFuture<?>[0]));
+        all = all.thenAccept((response) -> {
             try {
                 session.sendResponse(utils.postProcessGetFutures(responses, asks, futures, replicaNodes, acks));
             } catch (IOException e) {
-                logger.log(Level.SEVERE, "Exception while getting by proxy: ", e);
+                logger.log(Level.SEVERE, "Exception while processing get: ", e);
             }
         });
         all.exceptionally(except -> {
-            logger.log(Level.SEVERE, "Exception while getting by proxy: ", except);
             try {
                 session.sendResponse(utils.postProcessGetFutures(responses, asks, futures, replicaNodes, acks));
             } catch (IOException e) {
-                logger.log(Level.INFO, "Exception while getting by proxy: ", e);
+                logger.log(Level.INFO, "Exception while processing excepted get: ", e);
             }
             return null;
         });

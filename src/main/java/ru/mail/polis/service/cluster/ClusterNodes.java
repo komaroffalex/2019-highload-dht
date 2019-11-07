@@ -34,9 +34,14 @@ public class ClusterNodes {
         return new HashSet<>(this.nodes);
     }
 
+    /**
+     * Get all the ports to which the cluster is bound.
+     *
+     * @return all of the ports
+     */
     public Set<Integer> getPorts() {
-        Set<String> res = getNodes();
-        Set<Integer> ret = new HashSet<>();
+        final Set<String> res = getNodes();
+        final Set<Integer> ret = new HashSet<>();
         for (String it : res) {
             it = it.replaceAll("\\D+","");
             ret.add(Integer.parseInt(it));

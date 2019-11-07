@@ -42,24 +42,32 @@ public final class RequestUtils {
         return ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
     }
 
-    public static HttpRequest.Builder requestBase(String node, Request rqst) {
+    /**
+     * Get the base part of the request builder.
+     *
+     * @param node to specify node
+     * @param rqst to specify the request
+     * @return base part of the request to build
+     */
+    public static HttpRequest.Builder requestBase(final String node, final Request rqst) {
         return HttpRequest.newBuilder()
                 .uri(URI.create(node + rqst.getURI()))
                 .timeout(Duration.of(5, SECONDS))
                 .setHeader("PROXY_HEADER", PROXY_HEADER);
     }
 
-    public Response postProcessDeleteFutures(AtomicInteger asks, List<CompletableFuture<HttpResponse<byte[]>>> futures,
-                                              final int acks) {
-        for (final var futureTask : futures) {
-            try {
-                if (futureTask.get().statusCode() == 202) {
-                    asks.incrementAndGet();
-                }
-            } catch (ExecutionException | InterruptedException e) {
-                logger.log(Level.SEVERE, "Exception while deleting by proxy: ", e);
-            }
-        }
+    /**
+     * Process the futures associated with deleting.
+     *
+     * @param asks to specify current number of acks
+     * @param futures to specify the future requests
+     * @param acks to specify the amount of acks required
+     * @return response
+     */
+    public Response postProcessDeleteFutures(final AtomicInteger asks,
+                                             final List<CompletableFuture<HttpResponse<byte[]>>> futures,
+                                             final int acks) {
+        asks.set(checkCodeAndIncrement(asks, 202, futures));
         if (asks.get() >= acks) {
             return new Response(Response.ACCEPTED, Response.EMPTY);
         } else {
@@ -67,17 +75,32 @@ public final class RequestUtils {
         }
     }
 
-    public Response postProcessPutFutures(AtomicInteger asks, List<CompletableFuture<HttpResponse<byte[]>>> futures,
-                                           final int acks) {
+    private int checkCodeAndIncrement(final AtomicInteger asks, final int code,
+                                      final List<CompletableFuture<HttpResponse<byte[]>>> futures){
         for (final var futureTask : futures) {
             try {
-                if (futureTask.get().statusCode() == 201) {
+                if (futureTask.get().statusCode() == code) {
                     asks.incrementAndGet();
                 }
             } catch (ExecutionException | InterruptedException e) {
-                logger.log(Level.SEVERE, "Exception while putting by proxy: ", e);
+                logger.log(Level.SEVERE, "Exception while trying to get the future value: ", e);
             }
         }
+        return asks.get();
+    }
+
+    /**
+     * Process the futures associated with putting.
+     *
+     * @param asks to specify current number of acks
+     * @param futures to specify the future requests
+     * @param acks to specify the amount of acks required
+     * @return response
+     */
+    public Response postProcessPutFutures(final AtomicInteger asks,
+                                          final List<CompletableFuture<HttpResponse<byte[]>>> futures,
+                                          final int acks) {
+        asks.set(checkCodeAndIncrement(asks, 201, futures));
         if (asks.get() >= acks) {
             return new Response(Response.CREATED, Response.EMPTY);
         } else {
@@ -85,9 +108,19 @@ public final class RequestUtils {
         }
     }
 
-    public Response postProcessGetFutures(List<TimestampRecord> responses, AtomicInteger asks,
-                                           List<CompletableFuture<HttpResponse<byte[]>>> futures,
-                                           final String[] replicaNodes, final int acks) throws IOException {
+    /**
+     * Process the futures associated with getting.
+     *
+     * @param responses current list of records to fill
+     * @param asks to specify current number of acks
+     * @param futures to specify the future requests
+     * @param replicaNodes to specify the nodes to which to replicate
+     * @param acks to specify the amount of acks required
+     * @return response
+     */
+    public Response postProcessGetFutures(final List<TimestampRecord> responses, final AtomicInteger asks,
+                                          final List<CompletableFuture<HttpResponse<byte[]>>> futures,
+                                          final String[] replicaNodes, final int acks) throws IOException {
         for (final var futureTask : futures) {
             try {
                 if (futureTask.get().statusCode() == 404 && futureTask.get().body().length == 0) {
@@ -97,7 +130,7 @@ public final class RequestUtils {
                 }
                 asks.incrementAndGet();
             } catch (ExecutionException | InterruptedException e) {
-                logger.log(Level.SEVERE, "Exception while getting by proxy: ", e);
+                logger.log(Level.SEVERE, "Exception while processing get request: ", e);
             }
         }
         if (asks.get() >= acks) {
@@ -107,6 +140,13 @@ public final class RequestUtils {
         }
     }
 
+    /**
+     * Process the futures associated with putting.
+     *
+     * @param replicaNodes to specify the nodes to which to replicate
+     * @param responses list of current responses
+     * @return response
+     */
     public Response processResponses(final String[] replicaNodes,
                                       final List<TimestampRecord> responses) throws IOException {
         final TimestampRecord mergedResp = TimestampRecord.merge(responses);
@@ -125,14 +165,31 @@ public final class RequestUtils {
         }
     }
 
+    /**
+     * Access dao and put the required key.
+     *
+     * @param key to specify the key to put
+     * @param request to specify the request
+     */
     public void putWithTimestampMethodWrapper(final ByteBuffer key, final Request request) throws IOException {
         dao.upsertRecordWithTimestamp(key, ByteBuffer.wrap(request.getBody()));
     }
 
+    /**
+     * Access dao and delete the required key.
+     *
+     * @param key to specify the key to put
+     */
     public void deleteWithTimestampMethodWrapper(final ByteBuffer key) throws IOException {
         dao.removeRecordWithTimestamp(key);
     }
 
+    /**
+     * Access dao and get the required key.
+     *
+     * @param key to specify the key to put
+     * @return response containing the key
+     */
     @NotNull
     public Response getWithTimestampMethodWrapper(final ByteBuffer key) throws IOException {
         try {
