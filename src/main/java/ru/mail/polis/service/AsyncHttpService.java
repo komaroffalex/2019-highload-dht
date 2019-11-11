@@ -15,7 +15,6 @@ import ru.mail.polis.dao.DAO;
 import ru.mail.polis.dao.DAORocksDB;
 import ru.mail.polis.service.cluster.ClusterNodes;
 import ru.mail.polis.service.cluster.Coordinators;
-import ru.mail.polis.service.cluster.RF;
 
 import java.net.http.HttpClient;
 import java.net.http.HttpClient.Version;
@@ -37,14 +36,10 @@ public class AsyncHttpService extends HttpServer implements Service {
     private final DAORocksDB dao;
     @NotNull
     private final Executor workerThreads;
-
     private final ClusterNodes nodes;
-    private final int clusterSize;
-    private final Map<String, HttpClient> clusterClients;
+    private final Coordinators clusterCoordinator;
 
     private static final Logger logger = Logger.getLogger(AsyncHttpService.class.getName());
-
-    private final RF defaultRF;
 
     /**
      * Create the HTTP Cluster server.
@@ -63,9 +58,7 @@ public class AsyncHttpService extends HttpServer implements Service {
         this.workerThreads = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors(),
                 new ThreadFactoryBuilder().setNameFormat("worker").build());
         this.nodes = nodes;
-        this.clusterClients = clusterClients;
-        this.defaultRF = new RF(nodes.getNodes().size() / 2 + 1, nodes.getNodes().size());
-        this.clusterSize = nodes.getNodes().size();
+        this.clusterCoordinator = new Coordinators(nodes, clusterClients, dao);
     }
 
     /**
@@ -127,16 +120,12 @@ public class AsyncHttpService extends HttpServer implements Service {
             proxied = true;
         }
 
-        final String replicas = request.getParameter("replicas");
-        final RF rf = RF.calculateRF(replicas, session, defaultRF, clusterSize);
-        final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
         final boolean proxiedF = proxied;
 
         if (proxied || nodes.getNodes().size() > 1) {
-            final Coordinators clusterCoordinator = new Coordinators(nodes, clusterClients, dao, proxiedF);
-            final String[] replicaClusters = proxied ? new String[]{nodes.getId()} : nodes.replicas(rf.getFrom(), key);
-            clusterCoordinator.coordinateRequest(replicaClusters, request, rf.getAck(), session);
+            clusterCoordinator.coordinateRequest(proxiedF, request, session);
         } else {
+            final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
             executeAsyncRequest(request, key, session);
         }
     }

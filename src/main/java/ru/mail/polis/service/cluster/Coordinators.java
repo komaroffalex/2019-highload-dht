@@ -13,6 +13,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -35,13 +37,12 @@ public class Coordinators {
      * @param nodes to specify cluster nodes
      * @param clusterClients to specify the HttpClients of the cluster
      * @param dao to specify current DAO
-     * @param proxied to specify if the request is sent by proxying
      */
     public Coordinators(@NotNull final ClusterNodes nodes, final Map<String, HttpClient> clusterClients,
-                        @NotNull final DAO dao, final boolean proxied) {
+                        @NotNull final DAO dao) {
         this.nodes = nodes;
         this.clusterClients = clusterClients;
-        this.utils = new RequestUtils(proxied, dao);
+        this.utils = new RequestUtils(false, dao);
     }
 
     /**
@@ -55,21 +56,16 @@ public class Coordinators {
     private void coordinateDelete(final String[] replicaNodes, final Request rqst,
                                      final int acks, final HttpSession session) throws IOException {
         final AtomicInteger asks = new AtomicInteger(0);
-        final List<CompletableFuture<HttpResponse<byte[]>>> futures = new ArrayList<>();
+        final List<CompletableFuture<HttpResponse<byte[]>>> futures = new ArrayList<>(replicaNodes.length);
         for (final String node : replicaNodes) {
-            try {
                 if (node.equals(nodes.getId())) {
-                    utils.deleteWithTimestampMethodWrapper(RequestUtils.parseKey(rqst));
-                    asks.incrementAndGet();
+                    futures.add(utils.asyncExecuteLocalRequest(rqst));
                 } else {
                     final HttpRequest request = RequestUtils.requestBase(node, rqst).DELETE().build();
                     final CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node)
                             .sendAsync(request, BodyHandlers.ofByteArray());
                     futures.add(futureResp);
                 }
-            } catch (IOException e) {
-                logger.log(Level.SEVERE, "Exception while coordinating delete: ", e);
-            }
         }
         if (futures.isEmpty()) {
             session.sendResponse(new Response(Response.ACCEPTED, Response.EMPTY));
@@ -104,22 +100,17 @@ public class Coordinators {
     private void coordinatePut(final String[] replicaNodes, final Request rqst,
                                   final int acks, final HttpSession session) throws IOException {
         final AtomicInteger asks = new AtomicInteger(0);
-        final List<CompletableFuture<HttpResponse<byte[]>>> futures = new ArrayList<>();
+        final List<CompletableFuture<HttpResponse<byte[]>>> futures = new ArrayList<>(replicaNodes.length);
         for (final String node : replicaNodes) {
-            try {
-                if (node.equals(nodes.getId())) {
-                    utils.putWithTimestampMethodWrapper(RequestUtils.parseKey(rqst), rqst);
-                    asks.incrementAndGet();
-                } else {
-                    final HttpRequest request = RequestUtils.requestBase(node, rqst)
-                            .PUT(HttpRequest.BodyPublishers.ofByteArray(rqst.getBody()))
-                            .build();
-                    final CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node)
-                            .sendAsync(request, BodyHandlers.ofByteArray());
-                    futures.add(futureResp);
-                }
-            } catch (IOException e) {
-                logger.log(Level.SEVERE, "Exception while coordinating put: ", e);
+            if (node.equals(nodes.getId())) {
+                futures.add(utils.asyncExecuteLocalRequest(rqst));
+            } else {
+                final HttpRequest request = RequestUtils.requestBase(node, rqst)
+                        .PUT(HttpRequest.BodyPublishers.ofByteArray(rqst.getBody()))
+                        .build();
+                final CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node)
+                        .sendAsync(request, BodyHandlers.ofByteArray());
+                futures.add(futureResp);
             }
         }
         if (futures.isEmpty()) {
@@ -155,17 +146,11 @@ public class Coordinators {
     private void coordinateGet(final String[] replicaNodes, final Request rqst,
                               final int acks, final HttpSession session) throws IOException {
         final AtomicInteger asks = new AtomicInteger(0);
-        final List<CompletableFuture<HttpResponse<byte[]>>> futures = new ArrayList<>();
+        final List<CompletableFuture<HttpResponse<byte[]>>> futures = new ArrayList<>(replicaNodes.length);
         final List<TimestampRecord> responses = new ArrayList<>();
         for (final String node : replicaNodes) {
             if (node.equals(nodes.getId())) {
-                final Response resp = utils.getWithTimestampMethodWrapper(RequestUtils.parseKey(rqst));
-                if (resp.getBody().length == 0) {
-                    responses.add(TimestampRecord.getEmpty());
-                } else {
-                    responses.add(TimestampRecord.fromBytes(resp.getBody()));
-                }
-                asks.incrementAndGet();
+                futures.add(utils.asyncExecuteLocalRequest(rqst));
             } else {
                 final HttpRequest request = RequestUtils.requestBase(node, rqst).GET().build();
                 final CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node)
@@ -198,23 +183,29 @@ public class Coordinators {
     /**
      * Coordinate the request among all clusters.
      *
-     * @param replicaClusters to define the nodes where to create replicas
+     * @param proxied to define whether the request is proxied
      * @param request to define request
-     * @param acks to specify the amount of acks needed
      * @param session to specify the session where to output messages
      */
-    public void coordinateRequest(final String[] replicaClusters, final Request request,
-                                  final int acks, final HttpSession session) throws IOException {
+    public void coordinateRequest(final boolean proxied, final Request request,
+                                  final HttpSession session) throws IOException {
+        final String id = request.getParameter("id=");
+        final String replicas = request.getParameter("replicas");
+        final RF rf = RF.calculateRF(replicas, session,
+                new RF(nodes.getNodes().size() / 2 + 1, nodes.getNodes().size()), nodes.getNodes().size());
+        final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
+        final String[] replicaClusters = proxied ? new String[]{nodes.getId()} : nodes.replicas(rf.getFrom(), key);
+        this.utils.setProxied(proxied);
         try {
             switch (request.getMethod()) {
                 case Request.METHOD_GET:
-                    coordinateGet(replicaClusters, request, acks, session);
+                    coordinateGet(replicaClusters, request, rf.getAck(), session);
                     return;
                 case Request.METHOD_PUT:
-                    coordinatePut(replicaClusters, request, acks, session);
+                    coordinatePut(replicaClusters, request, rf.getAck(), session);
                     return;
                 case Request.METHOD_DELETE:
-                    coordinateDelete(replicaClusters, request, acks, session);
+                    coordinateDelete(replicaClusters, request, rf.getAck(), session);
                     return;
                 default:
                     session.sendError(Response.METHOD_NOT_ALLOWED, "Wrong method");

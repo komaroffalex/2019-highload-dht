@@ -6,7 +6,6 @@ import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.dao.DAO;
 import ru.mail.polis.dao.DAORocksDB;
 import ru.mail.polis.dao.TimestampRecord;
-import ru.mail.polis.service.cluster.Coordinators;
 
 import java.io.IOException;
 import java.net.URI;
@@ -27,8 +26,8 @@ import static java.time.temporal.ChronoUnit.SECONDS;
 
 public final class RequestUtils {
     private static final String PROXY_HEADER = "X-OK-Proxy: True";
-    private static final Logger logger = Logger.getLogger(Coordinators.class.getName());
-    private final boolean proxied;
+    private static final Logger logger = Logger.getLogger(RequestUtils.class.getName());
+    private boolean proxied;
     @NotNull
     private final DAORocksDB dao;
 
@@ -40,6 +39,10 @@ public final class RequestUtils {
     public static ByteBuffer parseKey(final Request rqst) {
         final String id = rqst.getParameter("id=");
         return ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
+    }
+
+    public void setProxied(boolean proxied) {
+        this.proxied = proxied;
     }
 
     /**
@@ -68,7 +71,7 @@ public final class RequestUtils {
                                              final List<CompletableFuture<HttpResponse<byte[]>>> futures,
                                              final int acks) {
         asks.set(checkCodeAndIncrement(asks, 202, futures));
-        if (asks.get() >= acks) {
+        if (asks.get() >= futures.size() || asks.get() >= acks) {
             return new Response(Response.ACCEPTED, Response.EMPTY);
         } else {
             return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
@@ -90,6 +93,37 @@ public final class RequestUtils {
     }
 
     /**
+     * Execute local request asynchronously.
+     *
+     * @param rqst to specify the request
+     * @return future result
+     */
+    public CompletableFuture<HttpResponse<byte[]>> asyncExecuteLocalRequest(final Request rqst) {
+        return CompletableFuture.supplyAsync(() -> {
+            HttpResponseClusterImpl resp;
+            try {
+                switch (rqst.getMethod()) {
+                    case Request.METHOD_DELETE:
+                        deleteWithTimestampMethodWrapper(parseKey(rqst));
+                        return new HttpResponseClusterImpl().setStatusCode(202);
+                    case Request.METHOD_PUT:
+                        putWithTimestampMethodWrapper(parseKey(rqst), rqst);
+                        return new HttpResponseClusterImpl().setStatusCode(201);
+                    case Request.METHOD_GET:
+                        final Response respGet = getWithTimestampMethodWrapper(parseKey(rqst));
+                        return new HttpResponseClusterImpl().setStatusCode(respGet.getStatus()).
+                                setBody(respGet.getBody());
+                    default:
+                        resp = new HttpResponseClusterImpl().setStatusCode(405);
+                }
+            } catch (IOException e) {
+                resp = new HttpResponseClusterImpl().setStatusCode(404);
+            }
+            return resp;
+        });
+    }
+
+    /**
      * Process the futures associated with putting.
      *
      * @param asks to specify current number of acks
@@ -101,7 +135,7 @@ public final class RequestUtils {
                                           final List<CompletableFuture<HttpResponse<byte[]>>> futures,
                                           final int acks) {
         asks.set(checkCodeAndIncrement(asks, 201, futures));
-        if (asks.get() >= acks) {
+        if (asks.get() >= futures.size() || asks.get() >= acks) {
             return new Response(Response.CREATED, Response.EMPTY);
         } else {
             return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
@@ -123,7 +157,7 @@ public final class RequestUtils {
                                           final String[] replicaNodes, final int acks) throws IOException {
         for (final var futureTask : futures) {
             try {
-                if (futureTask.get().statusCode() == 404 && futureTask.get().body().length == 0) {
+                if (futureTask.get().body().length == 0) {
                     responses.add(TimestampRecord.getEmpty());
                 } else if (futureTask.get().statusCode() != 500) {
                     responses.add(TimestampRecord.fromBytes(futureTask.get().body()));
@@ -133,7 +167,7 @@ public final class RequestUtils {
                 logger.log(Level.SEVERE, "Exception while processing get request: ", e);
             }
         }
-        if (asks.get() >= acks) {
+        if (asks.get() >= futures.size() || asks.get() >= acks) {
             return processResponses(replicaNodes, responses);
         } else {
             return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
