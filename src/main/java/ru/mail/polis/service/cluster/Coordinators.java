@@ -170,7 +170,9 @@ public class Coordinators {
         });
         all.exceptionally(except -> {
             try {
-                session.sendResponse(utils.postProcessGetFutures(responses, asks, futures, replicaNodes, acks));
+                if (futures.size() == 1)
+                    session.sendError(Response.GATEWAY_TIMEOUT, "Exception while getting!");
+                else session.sendResponse(utils.postProcessGetFutures(responses, asks, futures, replicaNodes, acks));
             } catch (IOException e) {
                 logger.log(Level.INFO, "Exception while processing excepted get: ", e);
             }
