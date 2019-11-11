@@ -81,6 +81,7 @@ public final class RequestUtils {
                                       final List<CompletableFuture<HttpResponse<byte[]>>> futures){
         for (final var futureTask : futures) {
             try {
+                if (futureTask.isCompletedExceptionally()) continue;
                 if (futureTask.get().statusCode() == code) {
                     asks.incrementAndGet();
                 }
@@ -152,6 +153,7 @@ public final class RequestUtils {
                                           final String[] replicaNodes, final int acks) throws IOException {
         for (final var futureTask : futures) {
             try {
+                if (futureTask.isCompletedExceptionally()) continue;
                 if (futureTask.get().body().length == 0) {
                     responses.add(TimestampRecord.getEmpty());
                 } else if (futureTask.get().statusCode() != 500) {
