@@ -55,33 +55,32 @@ public class Coordinators {
      */
     private void coordinateDelete(final String[] replicaNodes, final Request rqst,
                                      final int acks, final HttpSession session) throws IOException {
-        final AtomicInteger asks = new AtomicInteger(0);
         final List<CompletableFuture<HttpResponse<byte[]>>> futures = new ArrayList<>(replicaNodes.length);
         for (final String node : replicaNodes) {
-                if (node.equals(nodes.getId())) {
-                    futures.add(utils.asyncExecuteLocalRequest(rqst));
-                } else {
-                    final HttpRequest request = RequestUtils.requestBase(node, rqst).DELETE().build();
-                    final CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node)
-                            .sendAsync(request, BodyHandlers.ofByteArray());
-                    futures.add(futureResp);
-                }
+            if (node.equals(nodes.getId())) futures.add(utils.asyncExecuteLocalRequest(rqst));
+            else {
+                final HttpRequest request = RequestUtils.requestBase(node, rqst).DELETE().build();
+                final CompletableFuture<HttpResponse<byte[]>> futureResp = clusterClients.get(node)
+                        .sendAsync(request, BodyHandlers.ofByteArray());
+                futures.add(futureResp);
+            }
         }
         if (futures.isEmpty()) {
             session.sendResponse(new Response(Response.ACCEPTED, Response.EMPTY));
             return;
         }
+        final AtomicInteger asks = new AtomicInteger(0);
         var all = CompletableFuture.allOf(futures.toArray(new CompletableFuture<?>[0]));
         all = all.thenAccept((response)->{
             try {
-                session.sendResponse(utils.postProcessDeleteFutures(asks, futures, acks));
+                session.sendResponse(utils.postProcessDeleteFutures(asks, acks, futures));
             } catch (IOException e) {
                 logger.log(Level.SEVERE, "Exception while processing delete: ", e);
             }
         });
         all.exceptionally(except -> {
             try {
-                session.sendResponse(utils.postProcessDeleteFutures(asks, futures, acks));
+                session.sendResponse(utils.postProcessDeleteFutures(asks, acks, futures));
             } catch (IOException e) {
                 logger.log(Level.INFO, "Exception while processing excepted delete: ", e);
             }
@@ -99,12 +98,10 @@ public class Coordinators {
      */
     private void coordinatePut(final String[] replicaNodes, final Request rqst,
                                   final int acks, final HttpSession session) throws IOException {
-        final AtomicInteger asks = new AtomicInteger(0);
         final List<CompletableFuture<HttpResponse<byte[]>>> futures = new ArrayList<>(replicaNodes.length);
         for (final String node : replicaNodes) {
-            if (node.equals(nodes.getId())) {
-                futures.add(utils.asyncExecuteLocalRequest(rqst));
-            } else {
+            if (node.equals(nodes.getId())) futures.add(utils.asyncExecuteLocalRequest(rqst));
+            else {
                 final HttpRequest request = RequestUtils.requestBase(node, rqst)
                         .PUT(HttpRequest.BodyPublishers.ofByteArray(rqst.getBody()))
                         .build();
@@ -117,17 +114,18 @@ public class Coordinators {
             session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
             return;
         }
+        final AtomicInteger asks = new AtomicInteger(0);
         var all = CompletableFuture.allOf(futures.toArray(new CompletableFuture<?>[0]));
         all = all.thenAccept((response) -> {
             try {
-                session.sendResponse(utils.postProcessPutFutures(asks, futures, acks));
+                session.sendResponse(utils.postProcessPutFutures(asks, acks, futures));
             } catch (IOException e) {
                 logger.log(Level.SEVERE, "Exception while processing put: ", e);
             }
         });
         all.exceptionally(except -> {
             try {
-                session.sendResponse(utils.postProcessPutFutures(asks, futures, acks));
+                session.sendResponse(utils.postProcessPutFutures(asks, acks, futures));
             } catch (IOException e) {
                 logger.log(Level.INFO, "Exception while processing excepted put: ", e);
             }
@@ -145,7 +143,6 @@ public class Coordinators {
      */
     private void coordinateGet(final String[] replicaNodes, final Request rqst,
                               final int acks, final HttpSession session) throws IOException {
-        final AtomicInteger asks = new AtomicInteger(0);
         final List<CompletableFuture<HttpResponse<byte[]>>> futures = new ArrayList<>(replicaNodes.length);
         final List<TimestampRecord> responses = new ArrayList<>();
         for (final String node : replicaNodes) {
@@ -162,6 +159,7 @@ public class Coordinators {
             session.sendResponse(utils.processResponses(replicaNodes, responses));
             return;
         }
+        final AtomicInteger asks = new AtomicInteger(0);
         var all = CompletableFuture.allOf(futures.toArray(new CompletableFuture<?>[0]));
         all = all.thenAccept((response) -> {
             try {

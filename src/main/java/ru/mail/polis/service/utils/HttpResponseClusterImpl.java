@@ -12,10 +12,6 @@ public class HttpResponseClusterImpl implements HttpResponse<byte[]> {
     private int statusCode;
     private byte[] body;
 
-    public HttpResponseClusterImpl(){
-
-    }
-
     public HttpResponseClusterImpl setStatusCode(final int statusCode){
         this.statusCode = statusCode;
         return this;
@@ -43,11 +39,11 @@ public class HttpResponseClusterImpl implements HttpResponse<byte[]> {
 
     @Override
     public byte[] body() {
-        return this.body;
+        return this.body.clone();
     }
 
     public HttpResponseClusterImpl setBody(final byte[] body){
-        this.body = body;
+        this.body = body.clone();
         return this;
     }
 

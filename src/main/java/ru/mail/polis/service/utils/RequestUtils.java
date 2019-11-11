@@ -41,7 +41,7 @@ public final class RequestUtils {
         return ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
     }
 
-    public void setProxied(boolean proxied) {
+    public void setProxied(final boolean proxied) {
         this.proxied = proxied;
     }
 
@@ -67,9 +67,8 @@ public final class RequestUtils {
      * @param acks to specify the amount of acks required
      * @return response
      */
-    public Response postProcessDeleteFutures(final AtomicInteger asks,
-                                             final List<CompletableFuture<HttpResponse<byte[]>>> futures,
-                                             final int acks) {
+    public Response postProcessDeleteFutures(final AtomicInteger asks, final int acks,
+                                             final List<CompletableFuture<HttpResponse<byte[]>>> futures) {
         asks.set(checkCodeAndIncrement(asks, 202, futures));
         if (asks.get() >= futures.size() || asks.get() >= acks) {
             return new Response(Response.ACCEPTED, Response.EMPTY);
@@ -111,10 +110,10 @@ public final class RequestUtils {
                         return new HttpResponseClusterImpl().setStatusCode(201);
                     case Request.METHOD_GET:
                         final Response respGet = getWithTimestampMethodWrapper(parseKey(rqst));
-                        return new HttpResponseClusterImpl().setStatusCode(respGet.getStatus()).
-                                setBody(respGet.getBody());
+                        return new HttpResponseClusterImpl().setStatusCode(respGet.getStatus())
+                                .setBody(respGet.getBody());
                     default:
-                        resp = new HttpResponseClusterImpl().setStatusCode(405);
+                        return new HttpResponseClusterImpl().setStatusCode(405);
                 }
             } catch (IOException e) {
                 resp = new HttpResponseClusterImpl().setStatusCode(404);
@@ -131,15 +130,11 @@ public final class RequestUtils {
      * @param acks to specify the amount of acks required
      * @return response
      */
-    public Response postProcessPutFutures(final AtomicInteger asks,
-                                          final List<CompletableFuture<HttpResponse<byte[]>>> futures,
-                                          final int acks) {
+    public Response postProcessPutFutures(final AtomicInteger asks, final int acks,
+                                          final List<CompletableFuture<HttpResponse<byte[]>>> futures) {
         asks.set(checkCodeAndIncrement(asks, 201, futures));
-        if (asks.get() >= futures.size() || asks.get() >= acks) {
-            return new Response(Response.CREATED, Response.EMPTY);
-        } else {
-            return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
-        }
+        if (asks.get() >= futures.size() || asks.get() >= acks) return new Response(Response.CREATED, Response.EMPTY);
+        else return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
     }
 
     /**
