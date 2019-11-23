@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 
-public class AmmoGenerator {
+public final class AmmoGenerator {
     private static final int VALUE_LENGTH = 512;
     private static final String DILIMETER = "\r\n";
 
