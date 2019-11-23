@@ -13,9 +13,13 @@ import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 
-public abstract class AmmoGenerator {
+public class AmmoGenerator {
     private static final int VALUE_LENGTH = 512;
     private static final String DILIMETER = "\r\n";
+
+    private AmmoGenerator() {
+
+    }
 
     @NotNull
     private static byte[] randomValue() {
@@ -71,11 +75,11 @@ public abstract class AmmoGenerator {
         final List<String> keys = getUniqueKeys(amount);
         final Random r = new Random();
         for (int i = 0; i < amount; i++) {
-            final double val = r.nextGaussian()*amount*0.1+amount*0.9;
+            final double val = r.nextGaussian() * amount * 0.1 + amount * 0.9;
             int keyInd = (int) Math.round(val);
             if (keyInd >= amount) {
                 keyInd = amount - 1;
-            } else if(keyInd < 0) {
+            } else if (keyInd < 0) {
                 keyInd = 0;
             }
             getKey(keys.get(keyInd));
@@ -137,8 +141,8 @@ public abstract class AmmoGenerator {
      */
     public static void main(final String[] args) throws IOException {
         if (args.length != 2) {
-            System.err.println("Usage:\n\tjava -cp build/classes/java/main ru.mail.polis.service.<login>" +
-                    ".AmmoGenerator <put|get> <requests>");
+            System.err.println("Usage:\n\tjava -cp build/classes/java/main ru.mail.polis.service.<login>"
+                    + ".AmmoGenerator <put|get> <requests>");
             System.exit(-1);
         }
 

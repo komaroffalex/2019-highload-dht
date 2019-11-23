@@ -233,7 +233,7 @@ public final class RequestUtils {
 
     private byte[] copyAndExtractWithTimestampFromByteBuffer(@NotNull final ByteBuffer key) throws IOException {
         final TimestampRecord res = dao.getRecordWithTimestamp(key);
-        if (res.isEmpty()){
+        if (res.isEmpty()) {
             throw new NoSuchElementException("Element not found!");
         }
         return res.toBytes();
