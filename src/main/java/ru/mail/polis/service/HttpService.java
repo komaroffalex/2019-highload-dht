@@ -71,8 +71,7 @@ public final class HttpService extends HttpServer implements Service {
         try {
             final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
             return processResponse(key, request);
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             return responseWrapper(Response.INTERNAL_ERROR, Response.EMPTY);
         }
     }

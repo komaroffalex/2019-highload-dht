@@ -12,7 +12,7 @@ public class HttpResponseClusterImpl implements HttpResponse<byte[]> {
     private int statusCode;
     private byte[] body;
 
-    public HttpResponseClusterImpl setStatusCode(final int statusCode){
+    public HttpResponseClusterImpl setStatusCode(final int statusCode) {
         this.statusCode = statusCode;
         return this;
     }
@@ -42,7 +42,7 @@ public class HttpResponseClusterImpl implements HttpResponse<byte[]> {
         return this.body.clone();
     }
 
-    public HttpResponseClusterImpl setBody(final byte[] body){
+    public HttpResponseClusterImpl setBody(final byte[] body) {
         this.body = body.clone();
         return this;
     }

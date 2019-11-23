@@ -77,7 +77,7 @@ public class TimestampRecord {
      */
     public byte[] toBytes() {
         var valueLength = 0;
-        if(isValue()) {
+        if (isValue()) {
             valueLength = value.remaining();
         }
         final var byteBuff = ByteBuffer.allocate(1 + Long.BYTES + valueLength);

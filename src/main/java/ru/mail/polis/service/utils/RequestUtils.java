@@ -31,7 +31,7 @@ public final class RequestUtils {
     @NotNull
     private final DAORocksDB dao;
 
-    public RequestUtils(final boolean proxied, @NotNull final DAO dao){
+    public RequestUtils(final boolean proxied, @NotNull final DAO dao) {
         this.proxied = proxied;
         this.dao = (DAORocksDB) dao;
     }
@@ -78,7 +78,7 @@ public final class RequestUtils {
     }
 
     private int checkCodeAndIncrement(final AtomicInteger asks, final int code,
-                                      final List<CompletableFuture<HttpResponse<byte[]>>> futures){
+                                      final List<CompletableFuture<HttpResponse<byte[]>>> futures) {
         for (final var futureTask : futures) {
             try {
                 if (futureTask.isCompletedExceptionally()) continue;
@@ -181,8 +181,8 @@ public final class RequestUtils {
     public Response processResponses(final String[] replicaNodes,
                                       final List<TimestampRecord> responses) throws IOException {
         final TimestampRecord mergedResp = TimestampRecord.merge(responses);
-        if(mergedResp.isValue()) {
-            if(!proxied && replicaNodes.length == 1) {
+        if (mergedResp.isValue()) {
+            if (!proxied && replicaNodes.length == 1) {
                 return new Response(Response.OK, mergedResp.getValueAsBytes());
             } else if (proxied && replicaNodes.length == 1) {
                 return new Response(Response.OK, mergedResp.toBytes());
@@ -233,7 +233,7 @@ public final class RequestUtils {
 
     private byte[] copyAndExtractWithTimestampFromByteBuffer(@NotNull final ByteBuffer key) throws IOException {
         final TimestampRecord res = dao.getRecordWithTimestamp(key);
-        if(res.isEmpty()){
+        if (res.isEmpty()){
             throw new NoSuchElementException("Element not found!");
         }
         return res.toBytes();

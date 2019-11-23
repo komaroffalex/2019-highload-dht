@@ -150,7 +150,7 @@ public class AsyncHttpService extends HttpServer implements Service {
 
     @Override
     public void handleDefault(@NotNull final Request request, @NotNull final HttpSession session) throws IOException {
-        switch(request.getPath()) {
+        switch (request.getPath()) {
             case "/v0/entity":
                 entity(request, session);
                 break;

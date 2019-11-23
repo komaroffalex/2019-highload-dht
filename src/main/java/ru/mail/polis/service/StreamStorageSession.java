@@ -48,7 +48,7 @@ final class StreamStorageSession extends HttpSession {
         next();
     }
 
-    private byte[] getByteArr(final int size){
+    private byte[] getByteArr(final int size) {
         return new byte[size];
     }
 
@@ -81,7 +81,7 @@ final class StreamStorageSession extends HttpSession {
             server.incRequestsProcessed();
 
             if ((handling = pipeline.pollFirst()) != null) {
-                if(handling == FIN) {
+                if (handling == FIN) {
                     scheduleClose();
                 } else {
                     try {

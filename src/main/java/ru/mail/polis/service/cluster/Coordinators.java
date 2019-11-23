@@ -71,7 +71,7 @@ public class Coordinators {
         }
         final AtomicInteger asks = new AtomicInteger(0);
         var all = CompletableFuture.allOf(futures.toArray(new CompletableFuture<?>[0]));
-        all = all.thenAccept((response)->{
+        all = all.thenAccept((response) -> {
             try {
                 session.sendResponse(utils.postProcessDeleteFutures(asks, acks, futures));
             } catch (IOException e) {
@@ -172,8 +172,7 @@ public class Coordinators {
             try {
                 if (futures.size() == 1) {
                     session.sendError(Response.GATEWAY_TIMEOUT, "Exception while processing get!");
-                }
-                else {
+                } else {
                     session.sendResponse(utils.postProcessGetFutures(responses, asks, futures, replicaNodes, acks));
                 }
             } catch (IOException e) {
