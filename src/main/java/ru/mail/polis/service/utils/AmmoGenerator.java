@@ -2,17 +2,18 @@ package ru.mail.polis.service.utils;
 
 import org.jetbrains.annotations.NotNull;
 
-import java.io.*;
+import java.io.IOException;
+import java.io.ByteArrayOutputStream;
+import java.io.Writer;
+import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 
 public class AmmoGenerator {
     private static final int VALUE_LENGTH = 512;
-
-    @NotNull
-    private static String randomKey() {
-        return Long.toHexString(ThreadLocalRandom.current().nextLong());
-    }
 
     @NotNull
     private static byte[] randomValue() {
@@ -21,9 +22,83 @@ public class AmmoGenerator {
         return result;
     }
 
-    private static void put() throws IOException {
-        final String key = randomKey();
-        final byte[] value = randomValue();
+    @NotNull
+    private static ArrayList<String> getUniqueKeys(final int amount) {
+        ArrayList<String> keys = new ArrayList<>(amount);
+        for(long i = 0; i < amount; i++) {
+            keys.add(Long.toHexString(i));
+        }
+        return keys;
+    }
+
+    private static int getRandomNumberInRange(int min, int max) {
+        Random r = new Random();
+        return r.ints(min, max).findFirst().getAsInt();
+    }
+
+    private static void generateUniquePuts(final int amount) throws IOException {
+        final ArrayList<String> keys = getUniqueKeys(amount);
+        for (final String key : keys) {
+            final byte[] value = randomValue();
+            putKeyVal(key, value);
+        }
+    }
+
+    private static void generatePartialOverwritePuts(final int amount) throws IOException {
+        final ArrayList<String> keys = getUniqueKeys(amount);
+        final Double amountRepeat = keys.size() * 0.1;
+        final int amountToRepeat = amountRepeat.intValue();
+        for(int i = 0; i < amountToRepeat; i++) {
+            keys.set(getRandomNumberInRange(0, amount), keys.get(getRandomNumberInRange(0, amount)));
+        }
+        for (final String key : keys) {
+            final byte[] value = randomValue();
+            putKeyVal(key, value);
+        }
+    }
+
+    private static void generateExistingGets(final int amount) throws IOException {
+        final ArrayList<String> keys = getUniqueKeys(amount);
+        Collections.shuffle(keys);
+        for (final String key : keys) {
+            getKey(key);
+        }
+    }
+
+    private static void generateExistingGetsNewestFirst(final int amount) throws IOException {
+        final ArrayList<String> keys = getUniqueKeys(amount);
+        Random r = new Random();
+        for (int i = 0; i < amount; i++) {
+            double val = r.nextGaussian() * (amount*0.1) + (amount*0.9);
+            int keyInd = (int) Math.round(val);
+            if(keyInd >= amount) {
+                keyInd = amount - 1;
+            }
+            else if(keyInd < 0) {
+                keyInd = 0;
+            }
+            getKey(keys.get(keyInd));
+        }
+    }
+
+    private static void generateMixedPutsAndGets(final int amount) throws IOException {
+        final int halfAmount = amount / 2;
+        final ArrayList<String> keys = getUniqueKeys(halfAmount);
+        final ArrayList<String> puttedKeys = new ArrayList<>();
+        for (int i = 0; i < halfAmount; i++) {
+            int choice = getRandomNumberInRange(0, 2);
+            if (choice == 0) {
+                final byte[] value = randomValue();
+                putKeyVal(keys.get(0), value);
+                puttedKeys.add(keys.get(0));
+            } else if(choice == 1 && puttedKeys.size() > 2) {
+                int getIdx = getRandomNumberInRange(0, puttedKeys.size());
+                getKey(puttedKeys.get(getIdx));
+            }
+        }
+    }
+
+    private static void putKeyVal(final String key, final byte[] value) throws IOException {
         final ByteArrayOutputStream request = new ByteArrayOutputStream();
         try (Writer writer = new OutputStreamWriter(request, StandardCharsets.US_ASCII)) {
             writer.write("PUT /v0/entity?id=" + key + " HTTP/1.1\r\n");
@@ -37,8 +112,7 @@ public class AmmoGenerator {
         System.out.write("\r\n".getBytes(StandardCharsets.US_ASCII));
     }
 
-    public static void get() throws IOException {
-        final String key = randomKey();
+    public static void getKey(final String key) throws IOException {
         final ByteArrayOutputStream request = new ByteArrayOutputStream();
         try (Writer writer = new OutputStreamWriter(request, StandardCharsets.US_ASCII)) {
             writer.write("GET /v0/entity?id=" + key + " HTTP/1.1\r\n");
@@ -60,15 +134,20 @@ public class AmmoGenerator {
         final int requests = Integer.parseInt(args[1]);
 
         switch (mode) {
-            case "put":
-                for(int i = 0; i < requests; i++) {
-                    put();
-                }
+            case "puts_unique":
+                generateUniquePuts(requests);
                 break;
-            case "get":
-                for(int i = 0; i < requests; i++) {
-                    get();
-                }
+            case "puts_overwrite":
+                generatePartialOverwritePuts(requests);
+                break;
+            case "gets_existing":
+                generateExistingGets(requests);
+                break;
+            case "gets_latest":
+                generateExistingGetsNewestFirst(requests);
+                break;
+            case "mixed":
+                generateMixedPutsAndGets(requests);
                 break;
             default:
                 throw new UnsupportedOperationException("Unsupported mode: " + mode);
